@@ -253,7 +253,6 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
     port = IntegerVar(required=False, default=22)
     timeout = IntegerVar(required=False, default=30)
     set_send_command_timing = BooleanVar(
-        required=False,
         default=False,
         label="Use Netmiko send_command_timing",
         description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
@@ -552,7 +551,6 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
     sync_vrfs = BooleanVar(default=False, description="Sync VRFs and interface VRF assignments.")
     sync_cables = BooleanVar(default=False, description="Sync cables between interfaces via a LLDP or CDP.")
     set_send_command_timing = BooleanVar(
-        required=False,
         default=False,
         label="Use Netmiko send_command_timing",
         description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
