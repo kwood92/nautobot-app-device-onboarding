@@ -373,7 +373,9 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                     platform = Platform.objects.get(
                         name=row["platform_name"].strip(),
                     )
-
+                set_send_command_timing = self._convert_sring_to_bool(
+                    string=row["set_send_command_timing"].lower().strip(), header="set_send_command_timing"
+                )
                 set_mgmgt_only = self._convert_sring_to_bool(
                     string=row["set_mgmt_only"].lower().strip(), header="set_mgmt_only"
                 )
@@ -387,6 +389,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 processed_csv_data[row["ip_address_host"]]["namespace"] = namespace
                 processed_csv_data[row["ip_address_host"]]["port"] = int(row["port"].strip())
                 processed_csv_data[row["ip_address_host"]]["timeout"] = int(row["timeout"].strip())
+                processed_csv_data[row["ip_address_host"]]["set_send_command_timing"] = set_send_command_timing
                 processed_csv_data[row["ip_address_host"]]["set_mgmt_only"] = set_mgmgt_only
                 processed_csv_data[row["ip_address_host"]]["update_devices_without_primary_ip"] = (
                     update_devices_without_primary_ip
@@ -543,6 +546,11 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
     sync_vlans = BooleanVar(default=False, description="Sync VLANs and interface VLAN assignments.")
     sync_vrfs = BooleanVar(default=False, description="Sync VRFs and interface VRF assignments.")
     sync_cables = BooleanVar(default=False, description="Sync cables between interfaces via a LLDP or CDP.")
+    set_send_command_timing = BooleanVar(
+        default=False,
+        label="Use Netmiko send_command_timing",
+        description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
+    )
     namespace = ObjectVar(
         model=Namespace, required=True, description="The namespace for all IP addresses created or updated in the sync."
     )
@@ -617,6 +625,7 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
         sync_vlans,
         sync_vrfs,
         sync_cables,
+        set_send_command_timing,
         *args,
         **kwargs,
     ):
@@ -635,6 +644,7 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
         self.sync_vlans = sync_vlans
         self.sync_vrfs = sync_vrfs
         self.sync_cables = sync_cables
+        self.set_send_command_timing = set_send_command_timing
 
         # Check for last_network_data_sync CustomField
         if self.debug:
