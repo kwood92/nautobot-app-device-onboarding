@@ -311,7 +311,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
         self.target_adapter = SyncDevicesNautobotAdapter(job=self, sync=self.sync)
         self.target_adapter.load()
 
-    def _convert_sring_to_bool(self, string, header):
+    def _convert_string_to_bool(self, string, header):
         """Given a string of 'true' or 'false' convert to bool."""
         if string.lower() == "true":
             return True
@@ -373,13 +373,13 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                     platform = Platform.objects.get(
                         name=row["platform_name"].strip(),
                     )
-                set_send_command_timing = self._convert_sring_to_bool(
+                set_send_command_timing = self._convert_string_to_bool(
                     string=row["set_send_command_timing"].lower().strip(), header="set_send_command_timing"
                 )
-                set_mgmgt_only = self._convert_sring_to_bool(
+                set_mgmgt_only = self._convert_string_to_bool(
                     string=row["set_mgmt_only"].lower().strip(), header="set_mgmt_only"
                 )
-                update_devices_without_primary_ip = self._convert_sring_to_bool(
+                update_devices_without_primary_ip = self._convert_string_to_bool(
                     string=row["update_devices_without_primary_ip"].lower().strip(),
                     header="update_devices_without_primary_ip",
                 )
