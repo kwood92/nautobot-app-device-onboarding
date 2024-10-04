@@ -252,6 +252,11 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
     )
     port = IntegerVar(required=False, default=22)
     timeout = IntegerVar(required=False, default=30)
+    set_send_command_timing = BooleanVar(
+        default=False,
+        label="Use Netmiko send_command_timing",
+        description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
+    )
     set_mgmt_only = BooleanVar(
         default=True,
         label="Set Management Only",
@@ -426,6 +431,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
         location,
         namespace,
         ip_addresses,
+        set_send_command_timing,
         set_mgmt_only,
         update_devices_without_primary_ip,
         device_role,
@@ -483,6 +489,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
             self.location = location
             self.namespace = namespace
             self.ip_addresses = ip_addresses.replace(" ", "").split(",")
+            self.set_send_command_timing = set_send_command_timing
             self.set_mgmt_only = set_mgmt_only
             self.update_devices_without_primary_ip = update_devices_without_primary_ip
             self.device_role = device_role
@@ -499,6 +506,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 "location": location,
                 "namespace": namespace,
                 "ip_addresses": ip_addresses,
+                "set_send_command_timing": set_send_command_timing,
                 "set_mgmt_only": set_mgmt_only,
                 "update_devices_without_primary_ip": update_devices_without_primary_ip,
                 "device_role": device_role,
