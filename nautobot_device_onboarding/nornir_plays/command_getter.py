@@ -132,7 +132,7 @@ def netmiko_send_commands(
                 task=netmiko_send_command,
                 name=command["command"],
                 command_string=command["command"],
-                use_timing=orig_job_kwargs.get("set_mgmt_only", False),
+                use_timing=orig_job_kwargs.get("set_send_command_timing", False),
                 read_timeout=60,
                 **send_command_kwargs,
             )
