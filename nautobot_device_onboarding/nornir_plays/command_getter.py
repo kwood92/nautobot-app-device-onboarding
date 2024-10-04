@@ -123,6 +123,11 @@ def netmiko_send_commands(
             f"{task.host.platform} has missing definitions for cables in command_mapper YAML file. Cables will not be loaded."
         )
 
+    if orig_job_kwargs["csv_file"] and orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]:
+        set_send_command_timing = orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]
+    else:
+        set_send_command_timing = orig_job_kwargs.get("set_send_command_timing", False)
+
     logger.debug(f"Commands to run: {commands}")
     logger.debug(f"set_send_command_time: {orig_job_kwargs.get('set_send_command_timing')}")
     # All commands in this for loop are running within 1 device connection.
@@ -133,7 +138,7 @@ def netmiko_send_commands(
                 task=netmiko_send_command,
                 name=command["command"],
                 command_string=command["command"],
-                use_timing=orig_job_kwargs.get("set_send_command_timing", False),
+                use_timing=set_send_command_timing,
                 read_timeout=60,
                 **send_command_kwargs,
             )
@@ -234,6 +239,12 @@ def sync_devices_command_getter(job_result, log_level, kwargs):
                     platform_id = kwargs["csv_file"][entered_ip]["platform"]
                     if platform_id:
                         platform = Platform.objects.get(id=platform_id)
+
+                    # get if netmiko send_command_timing provided via csv
+                    set_send_command_timing = False
+                    set_send_command_timing_bool = kwargs["csv_file"][entered_ip]["set_send_command_timing"]
+                    if set_send_command_timing_bool:
+                        set_send_command_timing = set_send_command_timing_bool
 
                     # parse secrets from secrets groups provided via csv
                     secrets_group_id = kwargs["csv_file"][entered_ip]["secrets_group"]
