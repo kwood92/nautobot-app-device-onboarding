@@ -124,6 +124,7 @@ def netmiko_send_commands(
         )
 
     logger.debug(f"Commands to run: {commands}")
+    logger.debug(f"set_send_command_time: {orig_job_kwargs.get("set_send_command_timing")}")
     # All commands in this for loop are running within 1 device connection.
     for result_idx, command in enumerate(commands):
         send_command_kwargs = {}
