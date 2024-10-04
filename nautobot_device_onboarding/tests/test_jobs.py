@@ -95,6 +95,7 @@ class SSOTSyncDevicesTestCase(TransactionTestCase):
         self.assertEqual(processed_csv_data["10.1.1.11"]["port"], 22)
         self.assertEqual(processed_csv_data["10.1.1.11"]["timeout"], 30)
         self.assertEqual(processed_csv_data["10.1.1.11"]["set_mgmt_only"], False)
+        self.assertEqual(processed_csv_data["10.1.1.11"]["set_send_command_timing"], True)
         self.assertEqual(processed_csv_data["10.1.1.11"]["update_devices_without_primary_ip"], False)
         self.assertEqual(processed_csv_data["10.1.1.11"]["device_role"], self.testing_objects["device_role"])
         self.assertEqual(processed_csv_data["10.1.1.11"]["device_status"], self.testing_objects["status"])

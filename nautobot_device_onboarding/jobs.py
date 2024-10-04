@@ -253,6 +253,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
     port = IntegerVar(required=False, default=22)
     timeout = IntegerVar(required=False, default=30)
     set_send_command_timing = BooleanVar(
+        required=False,
         default=False,
         label="Use Netmiko send_command_timing",
         description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
@@ -373,9 +374,12 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                     platform = Platform.objects.get(
                         name=row["platform_name"].strip(),
                     )
-                set_send_command_timing = self._convert_string_to_bool(
-                    string=row["set_send_command_timing"].lower().strip(), header="set_send_command_timing"
-                )
+                if row.get("set_send_command_timing"):
+                    set_send_command_timing = self._convert_string_to_bool(
+                        string=row["set_send_command_timing"].lower().strip(), header="set_send_command_timing"
+                    )
+                else:
+                    set_send_command_timing = False
                 set_mgmgt_only = self._convert_string_to_bool(
                     string=row["set_mgmt_only"].lower().strip(), header="set_mgmt_only"
                 )
@@ -390,6 +394,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 processed_csv_data[row["ip_address_host"]]["port"] = int(row["port"].strip())
                 processed_csv_data[row["ip_address_host"]]["timeout"] = int(row["timeout"].strip())
                 processed_csv_data[row["ip_address_host"]]["set_mgmt_only"] = set_mgmgt_only
+                processed_csv_data[row["ip_address_host"]]["set_send_command_timing"] = set_send_command_timing
                 processed_csv_data[row["ip_address_host"]]["update_devices_without_primary_ip"] = (
                     update_devices_without_primary_ip
                 )
@@ -547,6 +552,7 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
     sync_vrfs = BooleanVar(default=False, description="Sync VRFs and interface VRF assignments.")
     sync_cables = BooleanVar(default=False, description="Sync cables between interfaces via a LLDP or CDP.")
     set_send_command_timing = BooleanVar(
+        required=False,
         default=False,
         label="Use Netmiko send_command_timing",
         description="If true, netmiko will use send_command_timing which is entirely timing based rather than pattern matching. If False, netmiko will use send_command (default).",
@@ -705,6 +711,7 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
             "sync_vlans": sync_vlans,
             "sync_vrfs": sync_vrfs,
             "sync_cables": sync_cables,
+            "set_send_command_timing": set_send_command_timing,
         }
 
         super().run(dryrun, memory_profiling, *args, **kwargs)
