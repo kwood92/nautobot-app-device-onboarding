@@ -389,7 +389,6 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 processed_csv_data[row["ip_address_host"]]["namespace"] = namespace
                 processed_csv_data[row["ip_address_host"]]["port"] = int(row["port"].strip())
                 processed_csv_data[row["ip_address_host"]]["timeout"] = int(row["timeout"].strip())
-                processed_csv_data[row["ip_address_host"]]["set_send_command_timing"] = set_send_command_timing
                 processed_csv_data[row["ip_address_host"]]["set_mgmt_only"] = set_mgmgt_only
                 processed_csv_data[row["ip_address_host"]]["update_devices_without_primary_ip"] = (
                     update_devices_without_primary_ip
@@ -405,6 +404,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 self.task_kwargs_csv_data[row["ip_address_host"]] = {}
                 self.task_kwargs_csv_data[row["ip_address_host"]]["port"] = int(row["port"].strip())
                 self.task_kwargs_csv_data[row["ip_address_host"]]["timeout"] = int(row["timeout"].strip())
+                self.task_kwargs_csv_data[row["ip_address_host"]]["set_send_command_timing"] = set_send_command_timing
                 self.task_kwargs_csv_data[row["ip_address_host"]]["secrets_group"] = (
                     secrets_group.id if secrets_group else ""
                 )
@@ -461,7 +461,7 @@ class SSOTSyncDevices(DataSource):  # pylint: disable=too-many-instance-attribut
                 for ip_address in self.processed_csv_data:
                     self.ip_addresses.append(ip_address)
                 # prepare the task_kwargs needed by the CommandGetterDO job
-                self.job_result.task_kwargs = {"debug": debug, "csv_file": self.task_kwargs_csv_data, "set_send_command_timing": set_send_command_timing}
+                self.job_result.task_kwargs = {"debug": debug, "csv_file": self.task_kwargs_csv_data}
             else:
                 raise ValidationError(message="CSV check failed. No devices will be synced.")
 
