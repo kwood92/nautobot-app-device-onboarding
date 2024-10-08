@@ -124,7 +124,7 @@ def netmiko_send_commands(
         )
 
     # Get if Netmiko send_command_timing if going to be used for this host
-    if orig_job_kwargs["csv_file"] and orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]:
+    if orig_job_kwargs.get("csv_file", False) and orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]:
         set_send_command_timing = orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]
     else:
         set_send_command_timing = orig_job_kwargs.get("set_send_command_timing", False)
