@@ -121,7 +121,7 @@ class SyncNetworkDataInterface(FilteredNautobotModel):
     status__name: Optional[str] = None
     type: Optional[str] = None
     mac_address: Optional[str] = None
-    mtu: Optional[str] = None
+    mtu: Optional[int] = None
     parent_interface__name: Optional[str] = None
     lag__name: Optional[str] = None
     mode: Optional[str] = None
