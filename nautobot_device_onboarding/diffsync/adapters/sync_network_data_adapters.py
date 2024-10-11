@@ -121,7 +121,7 @@ class SyncNetworkDataNautobotAdapter(FilteredNautobotAdapter):
 
         Only Vlans that were returned by the CommandGetter job should be synced.
         """
-        for vlan in VLAN.objects.filter(locations__in=self.job.devices_to_load):
+        for vlan in VLAN.objects.filter(locations__in=self.job.location):
             network_vlan = self.vlan(
                 adapter=self,
                 name=vlan.name,
