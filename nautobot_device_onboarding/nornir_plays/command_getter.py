@@ -159,7 +159,8 @@ def netmiko_send_commands(
                                 )
                                 task.results[result_idx].result = parsed_output
                                 task.results[result_idx].failed = False
-                            except Exception:  # https://github.com/networktocode/ntc-templates/issues/369
+                            except Exception as err:  # https://github.com/networktocode/ntc-templates/issues/369
+                                print(command["command"], current_result.result, err)
                                 task.results[result_idx].result = []
                                 task.results[result_idx].failed = False
             else:

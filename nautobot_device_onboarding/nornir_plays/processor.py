@@ -62,6 +62,7 @@ class CommandGetterProcessor(BaseLoggingProcessor):
         ready_for_ssot_data = extract_show_data(
             host, parsed_command_outputs, task.params["command_getter_job"], self.kwargs["debug"]
         )
+        print(parsed_command_outputs)
         if task.params["command_getter_job"] == "sync_devices":
             try:
                 validate(ready_for_ssot_data, NETWORK_DEVICES_SCHEMA)
