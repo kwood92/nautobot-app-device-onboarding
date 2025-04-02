@@ -442,24 +442,42 @@ class SyncNetworkDataLagToInterface(DiffSyncModel):
                     f"An interface with attributes: [{self.get_identifiers}] was not found."
                 )
                 raise diffsync_exceptions.ObjectNotUpdated
-        try:
-            lag_interface = Interface.objects.get(
-                name=attrs["lag__interface__name"], device=interface.device, type=InterfaceTypeChoices.TYPE_LAG
-            )
-            interface.lag = lag_interface
-            interface.validated_save()
-        except ObjectDoesNotExist:
-            self.adapter.job.logger.error(
-                f"Failed to assign lag to {interface}, unable to locate a lag interface "
-                f"with attributes [name: {attrs['lag__interface__name']}, device: {interface.device.name} "
-                f"type: {InterfaceTypeChoices.TYPE_LAG}]"
-            )
-            raise diffsync_exceptions.ObjectNotUpdated
-        except ValidationError as err:
-            self.adapter.job.logger.error(
-                f"Failed to assign lag {lag_interface} to {interface} on {interface.device}, {err}"
-            )
-            raise diffsync_exceptions.ObjectNotUpdated
+            if interface:
+                try:
+                    lag_interface = Interface.objects.get(
+                        name=attrs["lag__interface__name"], device=interface.device, type=InterfaceTypeChoices.TYPE_LAG
+                    )
+                    interface.lag = lag_interface
+                    interface.validated_save()
+                except ObjectDoesNotExist:
+                    self.adapter.job.logger.error(
+                        f"Failed to assign lag to {interface}, unable to locate a lag interface "
+                        f"with attributes [name: {attrs['lag__interface__name']}, device: {interface.device.name} "
+                        f"type: {InterfaceTypeChoices.TYPE_LAG}]"
+                    )
+                    raise diffsync_exceptions.ObjectNotUpdated
+                except ValidationError as err:
+                    self.adapter.job.logger.error(
+                        f"Failed to assign lag {lag_interface} to {interface} on {interface.device}, {err}"
+                    )
+                    raise diffsync_exceptions.ObjectNotUpdated
+        else:
+            try:
+                interface = Interface.objects.get(**self.get_identifiers())
+            except ObjectDoesNotExist:
+                self.adapter.job.logger.error(
+                    f"Failed to unassign interface from LAG. An interface with attributes: [{self.get_identifiers}] was not found."
+                )
+                raise diffsync_exceptions.ObjectNotUpdated
+            if interface:
+                try:
+                    interface.lag = None
+                    interface.validated_save()
+                except ValidationError as err:
+                    self.adapter.job.logger.error(
+                        f"Failed to unassign {interface} on {interface.device} from LAG, {err}"
+                    )
+                    raise diffsync_exceptions.ObjectNotUpdated
 
         return super().update(attrs)
 
