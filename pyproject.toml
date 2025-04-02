@@ -34,7 +34,8 @@ nautobot = "^2.2.3"
 nautobot-ssot = "^3.0.0"
 nautobot-plugin-nornir = "^2.0.0"
 jdiff = "^0.0.6"
-ntc-templates = ">=6.0.0"
+#ntc-templates = ">=6.0.0"
+ntc-templates = {git = "https://github.com/kwood92/ntc-templates.git", rev = "summit-internet"}
 # Netutils pin is needed for https://github.com/networktocode/netutils/pull/553
 netutils = "^1.9.1"
 
