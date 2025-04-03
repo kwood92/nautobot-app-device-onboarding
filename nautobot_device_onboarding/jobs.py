@@ -613,6 +613,10 @@ class SSOTSyncNetworkData(DataSource):  # pylint: disable=too-many-instance-attr
         self.target_adapter = SyncNetworkDataNautobotAdapter(job=self, sync=self.sync)
         self.target_adapter.load()
 
+        if self.debug:
+            diff = self.source_adapter.diff_to(self.target_adapter)
+            self.logger.debug(diff.dict())
+
     def run(
         self,
         dryrun,
