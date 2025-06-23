@@ -1,7 +1,7 @@
 """Constants for nautobot_device_onboarding app."""
 
 from django.conf import settings
-from nautobot.dcim.utils import get_all_network_driver_mappings
+#from nautobot.dcim.utils import get_all_network_driver_mappings - Fix startup crash https://github.com/nautobot/nautobot-app-device-onboarding/issues/320
 
 PLUGIN_CFG = settings.PLUGINS_CONFIG["nautobot_device_onboarding"]
 
@@ -17,7 +17,7 @@ NETMIKO_TO_NAPALM_STATIC = {
 
 
 # This is used in the new SSoT based jobs.
-SUPPORTED_NETWORK_DRIVERS = list(get_all_network_driver_mappings().keys())
+#SUPPORTED_NETWORK_DRIVERS = list(get_all_network_driver_mappings().keys()) - Fix startup crash https://github.com/nautobot/nautobot-app-device-onboarding/issues/320
 
 # This is used in the new SSoT based jobs. Soon TPP, PYATS should be supported.
 # SUPPORTED_COMMAND_PARSERS = ["textfsm", "ttp", "pyats"]
