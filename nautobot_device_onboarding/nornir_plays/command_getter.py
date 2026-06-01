@@ -96,6 +96,24 @@ def _get_commands_to_run(yaml_parsed_info, sync_vlans, sync_vrfs, sync_cables):
     return deduplicate_command_list(all_commands)
 
 
+def _get_set_send_command_timing(orig_job_kwargs, host_name):
+    """Determine whether netmiko ``send_command_timing`` should be used for a host.
+
+    A per-host value supplied via a CSV file takes precedence over the job-wide
+    ``set_send_command_timing`` form input, but only when the CSV value is truthy.
+
+    Args:
+        orig_job_kwargs: The original job keyword arguments.
+        host_name: The name of the host being processed.
+
+    Returns:
+        The resolved ``set_send_command_timing`` value (defaults to False).
+    """
+    if orig_job_kwargs.get("csv_file", False) and orig_job_kwargs["csv_file"][host_name]["set_send_command_timing"]:
+        return orig_job_kwargs["csv_file"][host_name]["set_send_command_timing"]
+    return orig_job_kwargs.get("set_send_command_timing", False)
+
+
 def netmiko_send_commands(
     task: Task, command_getter_yaml_data: Dict, command_getter_job: str, logger, **orig_job_kwargs
 ):
@@ -125,10 +143,7 @@ def netmiko_send_commands(
         )
 
     # Get if Netmiko send_command_timing if going to be used for this host
-    if orig_job_kwargs.get("csv_file", False) and orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]:
-        set_send_command_timing = orig_job_kwargs["csv_file"][task.host.name]["set_send_command_timing"]
-    else:
-        set_send_command_timing = orig_job_kwargs.get("set_send_command_timing", False)
+    set_send_command_timing = _get_set_send_command_timing(orig_job_kwargs, task.host.name)
 
     logger.debug(f"Commands to run: {commands}")
     # All commands in this for loop are running within 1 device connection.

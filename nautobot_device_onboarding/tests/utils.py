@@ -2,7 +2,17 @@
 
 from django.contrib.contenttypes.models import ContentType
 from nautobot.dcim.choices import InterfaceModeChoices, InterfaceTypeChoices
-from nautobot.dcim.models import Cable, Device, DeviceType, Interface, Location, LocationType, Manufacturer, Platform
+from nautobot.dcim.models import (
+    Cable,
+    Device,
+    DeviceType,
+    Interface,
+    Location,
+    LocationType,
+    Manufacturer,
+    Platform,
+    SoftwareVersion,
+)
 from nautobot.extras.choices import SecretsGroupAccessTypeChoices, SecretsGroupSecretTypeChoices
 from nautobot.extras.models import Role, Secret, SecretsGroup, SecretsGroupAssociation, Status
 from nautobot.ipam.choices import IPAddressTypeChoices, PrefixTypeChoices
@@ -23,6 +33,7 @@ def sync_network_data_ensure_required_nautobot_objects():
     status.content_types.add(ContentType.objects.get_for_model(VLAN))
     status.content_types.add(ContentType.objects.get_for_model(VRF))
     status.content_types.add(ContentType.objects.get_for_model(Cable))
+    status.content_types.add(ContentType.objects.get_for_model(SoftwareVersion))
     status.validated_save()
 
     username_secret, _ = Secret.objects.get_or_create(

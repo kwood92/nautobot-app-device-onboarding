@@ -3,6 +3,7 @@
 sync_network_mock_data_valid = {
     "demo-cisco-1": {
         "serial": "9ABUXU581111",
+        "software_version": "16.12.04",
         "interfaces": {
             "GigabitEthernet1": {
                 "type": "100base-tx",
@@ -112,6 +113,7 @@ sync_network_mock_data_valid = {
     },
     "demo-cisco-2": {
         "serial": "9ABUXU5882222",
+        "software_version": "17.03.01",
         "interfaces": {
             "GigabitEthernet1": {
                 "type": "100base-tx",

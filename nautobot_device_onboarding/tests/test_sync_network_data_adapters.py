@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from nautobot.core.testing import TransactionTestCase
-from nautobot.dcim.models import Device, Interface
+from nautobot.dcim.models import Device, Interface, SoftwareVersion
 from nautobot.extras.models import JobResult
 from nautobot.ipam.models import VLAN, VRF, IPAddress
 
@@ -226,6 +226,28 @@ class SyncNetworkDataNetworkAdapterTestCase(TransactionTestCase):
                 self.assertEqual(termination_b_device, diffsync_obj.termination_b__device__name)
                 self.assertEqual(termination_b_interface, diffsync_obj.termination_b__name)
 
+    def test_load_software_versions(self):
+        """Test loading software version data returned from command getter into the diffsync store."""
+        self.sync_network_data_adapter.load_software_versions()
+        for hostname, device_data in self.job.command_getter_result.items():
+            if device_data.get("software_version"):
+                device = Device.objects.get(name=hostname, serial=device_data["serial"])
+                unique_id = f"{device_data['software_version']}__{device.platform.name}"
+                diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
+                self.assertEqual(device_data["software_version"], diffsync_obj.version)
+                self.assertEqual(device.platform.name, diffsync_obj.platform__name)
+
+    def test_load_software_version_to_device(self):
+        """Test loading software version to device assignments into the diffsync store."""
+        self.sync_network_data_adapter.load_software_version_to_device()
+        for hostname, device_data in self.job.command_getter_result.items():
+            if device_data.get("software_version"):
+                unique_id = f"{hostname}__{device_data['serial']}"
+                diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
+                self.assertEqual(hostname, diffsync_obj.name)
+                self.assertEqual(device_data["serial"], diffsync_obj.serial)
+                self.assertEqual(device_data["software_version"], diffsync_obj.software_version__version)
+
 
 class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
     """Test SyncNetworkDataNautobotAdapter class."""
@@ -373,3 +395,37 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
         self.sync_network_data_adapter.sync_complete(source=None, diff=None)
         for device in self.job.devices_to_load.all():
             self.assertEqual(self.sync_network_data_adapter.primary_ips[device.id], device.primary_ip.id)
+
+    def test_load_software_versions(self):
+        """Test loading Nautobot software version data into the diffsync store."""
+        SoftwareVersion.objects.create(
+            version="16.12.04",
+            platform=self.testing_objects["platform_1"],
+            status=self.testing_objects["status"],
+        )
+        self.sync_network_data_adapter.load_software_versions()
+        for software_version in SoftwareVersion.objects.all():
+            unique_id = f"{software_version.version}__{software_version.platform.name}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
+            self.assertEqual(software_version.version, diffsync_obj.version)
+            self.assertEqual(software_version.platform.name, diffsync_obj.platform__name)
+
+    def test_load_software_version_to_device(self):
+        """Test loading Nautobot software version to device assignments into the diffsync store."""
+        software_version = SoftwareVersion.objects.create(
+            version="16.12.04",
+            platform=self.testing_objects["platform_1"],
+            status=self.testing_objects["status"],
+        )
+        device = self.testing_objects["device_1"]
+        device.software_version = software_version
+        device.validated_save()
+
+        self.sync_network_data_adapter.load_software_version_to_device()
+        for device in self.job.devices_to_load:
+            unique_id = f"{device.name}__{device.serial}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
+            self.assertEqual(device.name, diffsync_obj.name)
+            self.assertEqual(device.serial, diffsync_obj.serial)
+            expected_version = device.software_version.version if device.software_version else ""
+            self.assertEqual(expected_version, diffsync_obj.software_version__version)

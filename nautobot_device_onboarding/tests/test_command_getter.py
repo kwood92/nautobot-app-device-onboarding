@@ -5,7 +5,10 @@ import unittest
 
 import yaml
 
-from nautobot_device_onboarding.nornir_plays.command_getter import _get_commands_to_run
+from nautobot_device_onboarding.nornir_plays.command_getter import (
+    _get_commands_to_run,
+    _get_set_send_command_timing,
+)
 
 MOCK_DIR = os.path.join("nautobot_device_onboarding", "tests", "mock")
 
@@ -217,3 +220,47 @@ class TestGetCommandsToRun(unittest.TestCase):
             },
         ]
         self.assertEqual(get_commands_to_run, expected_commands_to_run)
+
+
+class TestGetSetSendCommandTiming(unittest.TestCase):
+    """Test resolution of the netmiko ``use_timing`` flag for a host."""
+
+    def test_default_when_no_inputs(self):
+        """With no csv_file and no job kwarg, timing defaults to False."""
+        self.assertFalse(_get_set_send_command_timing({}, "router1"))
+
+    def test_job_kwarg_true(self):
+        """The job-wide kwarg is honored when no csv_file is supplied."""
+        self.assertTrue(_get_set_send_command_timing({"set_send_command_timing": True}, "router1"))
+
+    def test_job_kwarg_false(self):
+        """A falsy job-wide kwarg resolves to False."""
+        self.assertFalse(_get_set_send_command_timing({"set_send_command_timing": False}, "router1"))
+
+    def test_csv_value_overrides_job_kwarg(self):
+        """A per-host csv True wins even when the job kwarg is False."""
+        orig_job_kwargs = {
+            "set_send_command_timing": False,
+            "csv_file": {"router1": {"set_send_command_timing": True}},
+        }
+        self.assertTrue(_get_set_send_command_timing(orig_job_kwargs, "router1"))
+
+    def test_csv_false_falls_back_to_job_kwarg(self):
+        """A falsy per-host csv value falls back to the job-wide kwarg.
+
+        Because the csv value is only used when truthy, a csv False does NOT
+        override a job-wide True.
+        """
+        orig_job_kwargs = {
+            "set_send_command_timing": True,
+            "csv_file": {"router1": {"set_send_command_timing": False}},
+        }
+        self.assertTrue(_get_set_send_command_timing(orig_job_kwargs, "router1"))
+
+    def test_csv_false_and_job_kwarg_false(self):
+        """Both csv and job kwarg falsy resolves to False."""
+        orig_job_kwargs = {
+            "set_send_command_timing": False,
+            "csv_file": {"router1": {"set_send_command_timing": False}},
+        }
+        self.assertFalse(_get_set_send_command_timing(orig_job_kwargs, "router1"))
