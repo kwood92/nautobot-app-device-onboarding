@@ -4,13 +4,14 @@ import logging
 from itertools import chain
 
 from django_jinja import library
+from nautobot.apps.choices import InterfaceModeChoices
+from netutils.ip import is_ip
 from netutils.vlan import vlanconfig_to_list
 
 from nautobot_device_onboarding.constants import INTERFACE_TYPE_MAP_STATIC
 
 # https://docs.nautobot.com/projects/core/en/stable/development/apps/api/platform-features/jinja2-filters/
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -33,15 +34,26 @@ def interface_status_to_bool(status):
 
 
 @library.filter
-def port_mode_to_nautobot(current_mode):
-    """Take links or admin status and change to boolean."""
-    mode_mapping = {
-        "access": "access",
-        "trunk": "tagged",
-        "bridged": "tagged",
-        "routed": "",
-    }
-    return mode_mapping.get(current_mode, "")
+def nxos_switchport_mode_to_nautobot_interface_mode(interface_object):
+    """Convert the switchport mode from the "show interface switchport" command output to a Nautobot interface mode."""
+    if isinstance(interface_object, (list, set)):
+        if len(interface_object) == 0:
+            # Interface not present in "show interface switchport". Return blank
+            return ""
+        interface_object = interface_object[0]
+
+    mode = interface_object.get("mode", "")
+    trunking_vlans = interface_object.get("trunking_vlans", "")
+
+    if mode in ("trunk", "bridged"):
+        if trunking_vlans == "1-4094":
+            return InterfaceModeChoices.MODE_TAGGED_ALL
+        return InterfaceModeChoices.MODE_TAGGED
+
+    if mode == "access":
+        return InterfaceModeChoices.MODE_ACCESS
+
+    return ""
 
 
 @library.filter
@@ -155,6 +167,8 @@ def get_vlan_data(item, vlan_mapping, tag_type):  # pylint: disable=too-many-ret
                 trunk_vlans = [current_item["trunking_vlans"]]
             else:
                 trunk_vlans = current_item["trunking_vlans"]
+            if any(isinstance(v, str) and v.lower() == "none" for v in trunk_vlans):
+                return []
             return [
                 {"id": str(vid), "name": vlan_mapping.get(str(vid), f"VLAN{str(vid).zfill(4)}")}
                 for vid in list(chain.from_iterable([vlanconfig_to_list(vlan_stanza) for vlan_stanza in trunk_vlans]))
@@ -174,11 +188,27 @@ def parse_junos_ip_address(item):
     """
     if isinstance(item, list) and len(item) > 0:
         if item[0]["prefix_length"] and item[0]["ip_address"]:
-            return [
-                {"prefix_length": item[0]["prefix_length"][0].split("/")[-1], "ip_address": item[0]["ip_address"][0]}
-            ]
+            result = []
+            for i in range(len(item[0]["ip_address"])):
+                prefix = item[0]["prefix_length"][i].split("/")[-1]
+                result.append(
+                    {
+                        "prefix_length": prefix,
+                        "ip_address": item[0]["ip_address"][i],
+                    }
+                )
+            return result
         if not item[0]["prefix_length"] and item[0]["ip_address"]:
-            return [{"prefix_length": 32, "ip_address": item[0]["ip_address"][0]}]
+            result = []
+            for i in range(len(item[0]["ip_address"])):
+                if is_ip(item[0]["ip_address"][i]):
+                    result.append(
+                        {
+                            "prefix_length": 32,
+                            "ip_address": item[0]["ip_address"][i],
+                        }
+                    )
+            return result
     return []
 
 
@@ -186,3 +216,15 @@ def parse_junos_ip_address(item):
 def remove_fqdn(hostname):
     """Remove the FQDN from the hostname."""
     return hostname.split(".")[0]
+
+
+@library.filter
+def junos_get_valid_interfaces(interfaces):
+    """Get valid interfaces from Junos."""
+    result = {}
+    for interface in interfaces:
+        result[interface["name"]] = {}
+        if interface["units"]:
+            for unit in interface["units"]:
+                result[f"{interface['name']}.{unit}"] = {}
+    return result

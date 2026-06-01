@@ -1,7 +1,13 @@
 """Constants for nautobot_device_onboarding app."""
 
 from django.conf import settings
-#from nautobot.dcim.utils import get_all_network_driver_mappings - Fix startup crash https://github.com/nautobot/nautobot-app-device-onboarding/issues/320
+
+NETMIKO_EXTRAS = (
+    settings.PLUGINS_CONFIG.get("nautobot_plugin_nornir", {})
+    .get("connection_options", {})
+    .get("netmiko", {})
+    .get("extras", {})
+)
 
 PLUGIN_CFG = settings.PLUGINS_CONFIG["nautobot_device_onboarding"]
 
@@ -16,12 +22,8 @@ NETMIKO_TO_NAPALM_STATIC = {
 }
 
 
-# This is used in the new SSoT based jobs.
-#SUPPORTED_NETWORK_DRIVERS = list(get_all_network_driver_mappings().keys()) - Fix startup crash https://github.com/nautobot/nautobot-app-device-onboarding/issues/320
-
-# This is used in the new SSoT based jobs. Soon TPP, PYATS should be supported.
-# SUPPORTED_COMMAND_PARSERS = ["textfsm", "ttp", "pyats"]
-SUPPORTED_COMMAND_PARSERS = ["textfsm"]
+# This is used in the new SSoT based jobs. Soon PYATS should be supported.
+SUPPORTED_COMMAND_PARSERS = ["textfsm", "ttp"]
 
 # This should potentially be removed and used nautobot core directly choices.
 # from nautobot.dcim.choices import InterfaceTypeChoices
@@ -38,7 +40,26 @@ INTERFACE_TYPE_MAP_STATIC = {
     "port-channel": "lag",
     "Port-Channel": "lag",
     "GEChannel": "lag",
+    "10GEChannel": "lag",
     "EtherSVI": "virtual",
     "FastEthernet": "100base-fx",
     "ethernet": "1000base-t",
+    "1000/10000/25000 Ethernet": "25gbase-x-sfp28",
+    "100/1000/10000/25000 Ethernet": "25gbase-x-sfp28",
+    "1000/10000/25000/40000/50000/100000 Ethernet": "100gbase-x-qsfp28",
+}
+
+# The git repository data source content identifier for custom command mappers.
+ONBOARDING_COMMAND_MAPPERS_CONTENT_IDENTIFIER = "nautobot_device_onboarding.onboarding_command_mappers"
+
+# The git repository data source folder name for custom command mappers.
+ONBOARDING_COMMAND_MAPPERS_REPOSITORY_FOLDER = "onboarding_command_mappers"
+
+# Support 4 modules deep (device -> modulebay -> module -> modulebay -> module -> modulebay -> module -> modulebay -> module -> interface)
+ONBOARDING_DEVICE_MODULE_RECURSION_LIMIT = 4
+
+# Network driver -> Nautobot Manufacturer display name. Override only where
+# `token.split("_")[0].title()` would produce the wrong canonical name.
+NETWORK_DRIVER_TO_MANUFACTURER = {
+    "paloalto_panos": "Palo Alto",
 }

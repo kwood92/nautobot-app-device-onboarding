@@ -3,6 +3,8 @@
 import unittest
 import unittest.mock
 
+from nautobot.apps.choices import InterfaceModeChoices
+
 from nautobot_device_onboarding.jinja_filters import (
     extract_prefix,
     flatten_dict_from_value,
@@ -13,8 +15,8 @@ from nautobot_device_onboarding.jinja_filters import (
     interface_status_to_bool,
     key_exist_or_default,
     map_interface_type,
+    nxos_switchport_mode_to_nautobot_interface_mode,
     parse_junos_ip_address,
-    port_mode_to_nautobot,
     remove_fqdn,
 )
 
@@ -58,13 +60,41 @@ class TestJinjaFilters(unittest.TestCase):
         """Take links or admin status and change to boolean."""
         self.assertTrue(interface_status_to_bool("UP"))
 
-    def test_port_mode_to_nautobot_default(self):
-        """Take links or admin status and change to boolean."""
-        self.assertEqual(port_mode_to_nautobot("foo"), "")
-
-    def test_port_mode_to_nautobot_valid_key(self):
-        """Take links or admin status and change to boolean."""
-        self.assertEqual(port_mode_to_nautobot("bridged"), "tagged")
+    def test_nxos_switchport_mode_to_nautobot_interface_mode(self):
+        """Convert the switchport mode from the "show interface switchport" command output to a Nautobot interface mode."""
+        subtests = {
+            "valid data (trunk)": {
+                "input": {"mode": "trunk", "trunking_vlans": "1,2,3,4"},
+                "expected": InterfaceModeChoices.MODE_TAGGED,
+            },
+            "valid data (trunk list)": {
+                "input": [{"mode": "trunk"}],
+                "expected": InterfaceModeChoices.MODE_TAGGED,
+            },
+            "valid data (trunk all vlans)": {
+                "input": [{"mode": "trunk", "trunking_vlans": "1-4094"}],
+                "expected": InterfaceModeChoices.MODE_TAGGED_ALL,
+            },
+            "valid data (access)": {
+                "input": [{"mode": "access"}],
+                "expected": InterfaceModeChoices.MODE_ACCESS,
+            },
+            "not a switchport": {
+                "input": [],
+                "expected": "",
+            },
+            "invalid data (list)": {
+                "input": [{"mode": "foo"}],
+                "expected": "",
+            },
+            "invalid data": {
+                "input": {"mode": "foo"},
+                "expected": "",
+            },
+        }
+        for name, value in subtests.items():
+            with self.subTest(name):
+                self.assertEqual(nxos_switchport_mode_to_nautobot_interface_mode(value["input"]), value["expected"])
 
     def test_key_exist_or_default_key_valid(self):
         """Take a dict with a key and if its not truthy return a default."""
@@ -238,15 +268,14 @@ class TestJinjaFilters(unittest.TestCase):
         expected = [{"prefix_length": "31", "ip_address": "10.65.229.106"}]
         self.assertEqual(parse_junos_ip_address(data), expected)
 
-    @unittest.skip("Need to correct assert used for list of dictionaries.")
     def test_parse_junos_ip_address_values_as_list_multiple(self):
         """Parse Junos IP and destination prefix."""
         data = [{"prefix_length": ["10.65.133.0/29", "10.65.133.0/29"], "ip_address": ["10.65.133.1", "10.65.133.3"]}]
         expected = [
             {"prefix_length": "29", "ip_address": "10.65.133.1"},
-            {"ip_address": "10.65.133.3", "prefix_length": "29"},
+            {"prefix_length": "29", "ip_address": "10.65.133.3"},
         ]
-        self.assertEqual(parse_junos_ip_address(data), expected)
+        self.assertCountEqual(parse_junos_ip_address(data), expected)
 
     def test_parse_junos_ip_address_values_as_empty_list(self):
         """Parse Junos IP and destination prefix."""

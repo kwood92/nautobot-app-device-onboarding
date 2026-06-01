@@ -16,6 +16,7 @@ from nautobot_device_onboarding.nornir_plays.formatter import (
 from nautobot_device_onboarding.nornir_plays.transform import add_platform_parsing_info
 
 MOCK_DIR = os.path.join("nautobot_device_onboarding", "tests", "mock")
+SYNC_DEVICES_ONLY = ["cisco_wlc", "hp_comware", "paloalto_panos"]
 
 
 def find_files_by_prefix(directory, prefix):
@@ -427,7 +428,22 @@ class TestFormatterSyncDevices(unittest.TestCase):
 
     def test_add_platform_parsing_info_sane_defaults(self):
         # Note: This is also officially tested in test_transform, but secondary check here as well.
-        default_mappers = ["cisco_ios", "arista_eos", "cisco_wlc", "cisco_xe", "juniper_junos", "cisco_nxos"]
+        default_mappers = [
+            "cisco_ios",
+            "arista_eos",
+            "cisco_wlc",
+            "cisco_xe",
+            "cisco_xr",
+            "juniper_junos",
+            "cisco_nxos",
+            "hp_comware",
+            "paloalto_panos",
+            "f5_tmsh",
+            "aruba_aoscx",
+            "aruba_os",
+            "brocade_fastiron",
+            "hp_procurve",
+        ]
         self.assertEqual(sorted(default_mappers), list(sorted(self.platform_parsing_info.keys())))
 
     def test_create_inventory_host_per_platform(self):
@@ -475,6 +491,8 @@ class TestFormatterSyncDevices(unittest.TestCase):
 class TestFormatterSyncNetworkDataNoOptions(unittest.TestCase):
     """Tests to ensure formatter is working for sync devices 'ssot job'."""
 
+    maxDiff = None
+
     @patch("nautobot_device_onboarding.nornir_plays.transform.GitRepository")
     def setUp(self, mock_repo):
         # Load the application command_mapper files
@@ -509,7 +527,8 @@ class TestFormatterSyncNetworkDataNoOptions(unittest.TestCase):
 
     def test_perform_data_extraction_sync_network_data_no_options(self):
         supported_platforms = list(self.platform_parsing_info.keys())
-        supported_platforms.remove("cisco_wlc")
+        for sync_only in SYNC_DEVICES_ONLY:
+            supported_platforms.remove(sync_only)
         for platform in supported_platforms:
             self.host.platform = platform
             current_test_dir = f"{MOCK_DIR}/{platform}/"
@@ -520,12 +539,15 @@ class TestFormatterSyncNetworkDataNoOptions(unittest.TestCase):
                     msg=f"test_perform_data_extraction_sync_network_data_no_options with platform {platform}"
                 ):
                     for command_getter_file in getters:
-                        with open(
-                            f"{MOCK_DIR}/{platform}/sync_network_data_no_options/expected_result_{command_getter_file.split('_')[-1]}",
-                            "r",
-                            encoding="utf-8",
-                        ) as expected_parsed:
-                            expected_parsed_result = json.loads(expected_parsed.read())
+                        try:
+                            with open(
+                                f"{MOCK_DIR}/{platform}/sync_network_data_no_options/expected_result_{command_getter_file.split('_')[-1]}",
+                                "r",
+                                encoding="utf-8",
+                            ) as expected_parsed:
+                                expected_parsed_result = json.loads(expected_parsed.read())
+                        except FileNotFoundError:
+                            continue
                         with open(
                             f"{MOCK_DIR}/{platform}/{command_getter_file}", "r", encoding="utf-8"
                         ) as command_info:
@@ -541,6 +563,8 @@ class TestFormatterSyncNetworkDataNoOptions(unittest.TestCase):
 
 class TestFormatterSyncNetworkDataWithVrfs(unittest.TestCase):
     """Tests to ensure formatter is working for sync devices 'ssot job'."""
+
+    maxDiff = None
 
     @patch("nautobot_device_onboarding.nornir_plays.transform.GitRepository")
     def setUp(self, mock_repo):
@@ -576,7 +600,8 @@ class TestFormatterSyncNetworkDataWithVrfs(unittest.TestCase):
 
     def test_perform_data_extraction_sync_network_data_with_vrfs(self):
         supported_platforms = list(self.platform_parsing_info.keys())
-        supported_platforms.remove("cisco_wlc")
+        for sync_only in SYNC_DEVICES_ONLY:
+            supported_platforms.remove(sync_only)
         for platform in supported_platforms:
             self.host.platform = platform
             current_test_dir = f"{MOCK_DIR}/{platform}/"
@@ -587,12 +612,15 @@ class TestFormatterSyncNetworkDataWithVrfs(unittest.TestCase):
                     msg=f"test_perform_data_extraction_sync_network_data_with_vrfs with platform {platform}"
                 ):
                     for command_getter_file in getters:
-                        with open(
-                            f"{MOCK_DIR}/{platform}/sync_network_data_with_vrfs/expected_result_{command_getter_file.split('_')[-1]}",
-                            "r",
-                            encoding="utf-8",
-                        ) as expected_parsed:
-                            expected_parsed_result = json.loads(expected_parsed.read())
+                        try:
+                            with open(
+                                f"{MOCK_DIR}/{platform}/sync_network_data_with_vrfs/expected_result_{command_getter_file.split('_')[-1]}",
+                                "r",
+                                encoding="utf-8",
+                            ) as expected_parsed:
+                                expected_parsed_result = json.loads(expected_parsed.read())
+                        except FileNotFoundError:
+                            continue
                         with open(
                             f"{MOCK_DIR}/{platform}/{command_getter_file}", "r", encoding="utf-8"
                         ) as command_info:
@@ -608,6 +636,8 @@ class TestFormatterSyncNetworkDataWithVrfs(unittest.TestCase):
 
 class TestFormatterSyncNetworkDataWithVlans(unittest.TestCase):
     """Tests to ensure formatter is working for sync devices 'ssot job'."""
+
+    maxDiff = None
 
     @patch("nautobot_device_onboarding.nornir_plays.transform.GitRepository")
     def setUp(self, mock_repo):
@@ -643,7 +673,8 @@ class TestFormatterSyncNetworkDataWithVlans(unittest.TestCase):
 
     def test_perform_data_extraction_sync_network_data_with_vlans(self):
         supported_platforms = list(self.platform_parsing_info.keys())
-        supported_platforms.remove("cisco_wlc")
+        for sync_only in SYNC_DEVICES_ONLY:
+            supported_platforms.remove(sync_only)
         for platform in supported_platforms:
             self.host.platform = platform
             current_test_dir = f"{MOCK_DIR}/{platform}/"
@@ -654,12 +685,15 @@ class TestFormatterSyncNetworkDataWithVlans(unittest.TestCase):
                     msg=f"test_perform_data_extraction_sync_network_data_with_vlans with platform {platform}"
                 ):
                     for command_getter_file in getters:
-                        with open(
-                            f"{MOCK_DIR}/{platform}/sync_network_data_with_vlans/expected_result_{command_getter_file.split('_')[-1]}",
-                            "r",
-                            encoding="utf-8",
-                        ) as expected_parsed:
-                            expected_parsed_result = json.loads(expected_parsed.read())
+                        try:
+                            with open(
+                                f"{MOCK_DIR}/{platform}/sync_network_data_with_vlans/expected_result_{command_getter_file.split('_')[-1]}",
+                                "r",
+                                encoding="utf-8",
+                            ) as expected_parsed:
+                                expected_parsed_result = json.loads(expected_parsed.read())
+                        except FileNotFoundError:
+                            continue
                         with open(
                             f"{MOCK_DIR}/{platform}/{command_getter_file}", "r", encoding="utf-8"
                         ) as command_info:
@@ -711,7 +745,8 @@ class TestFormatterSyncNetworkDataAll(unittest.TestCase):
 
     def test_perform_data_extraction_sync_network_data_all(self):
         supported_platforms = list(self.platform_parsing_info.keys())
-        supported_platforms.remove("cisco_wlc")
+        for sync_only in SYNC_DEVICES_ONLY:
+            supported_platforms.remove(sync_only)
         for platform in supported_platforms:
             self.host.platform = platform
             current_test_dir = f"{MOCK_DIR}/{platform}/"
@@ -726,6 +761,78 @@ class TestFormatterSyncNetworkDataAll(unittest.TestCase):
                             encoding="utf-8",
                         ) as expected_parsed:
                             expected_parsed_result = json.loads(expected_parsed.read())
+                        with open(
+                            f"{MOCK_DIR}/{platform}/{command_getter_file}", "r", encoding="utf-8"
+                        ) as command_info:
+                            command_outputs = json.loads(command_info.read())
+                            actual_result = perform_data_extraction(
+                                self.host,
+                                self.platform_parsing_info[platform]["sync_network_data"],
+                                command_outputs,
+                                job_debug=False,
+                            )
+                            self.assertEqual(expected_parsed_result, actual_result)
+
+
+class TestFormatterSyncNetworkDataWithSoftware(unittest.TestCase):
+    """Tests to ensure formatter is working for sync devices 'ssot job'."""
+
+    @patch("nautobot_device_onboarding.nornir_plays.transform.GitRepository")
+    def setUp(self, mock_repo):
+        # Load the application command_mapper files
+        mock_repo.return_value = 0
+        self.platform_parsing_info = add_platform_parsing_info()
+        self.host = Host(
+            name="198.51.100.1",
+            hostname="198.51.100.1",
+            port=22,
+            username="username",
+            password="password",  # nosec
+            platform="",  # Purposedly setting as None since we will loop through a single host instance for other tests.
+            connection_options={
+                "netmiko": ConnectionOptions(
+                    hostname="198.51.100.1",
+                    port=22,
+                    username="username",
+                    password="password",  # nosec
+                    platform="platform",
+                )
+            },
+            defaults=Defaults(data={"sync_vlans": False, "sync_vrfs": False, "sync_software_version": True}),
+        )
+
+    def test_perform_data_extraction_simple_host_values(self):
+        for platform in list(self.platform_parsing_info.keys()):
+            self.host.platform = platform
+            with self.subTest(msg=f"Testing host with platform {platform}"):
+                self.assertEqual("198.51.100.1", self.host.name)
+                self.assertFalse(self.host.defaults.data.get("sync_vlans"))
+                self.assertFalse(self.host.defaults.data.get("sync_vrfs"))
+                self.assertTrue(self.host.defaults.data.get("sync_software_version"))
+
+    def test_perform_data_extraction_sync_network_data_with_software(self):
+        supported_platforms = list(self.platform_parsing_info.keys())
+        for sync_only in SYNC_DEVICES_ONLY:
+            supported_platforms.remove(sync_only)
+        for platform in supported_platforms:
+            self.host.platform = platform
+            current_test_dir = f"{MOCK_DIR}/{platform}/"
+            getters = find_files_by_prefix(current_test_dir, "command_getter")
+            # NOTE: Cleanup later, should always require tests to be present
+            if len(getters) > 0:
+                with self.subTest(
+                    msg=f"test_perform_data_extraction_sync_network_data_with_software with platform {platform}"
+                ):
+                    for command_getter_file in getters:
+                        try:
+                            with open(
+                                f"{MOCK_DIR}/{platform}/sync_network_data_with_software/expected_result_{command_getter_file.split('_')[-1]}",
+                                "r",
+                                encoding="utf-8",
+                            ) as expected_parsed:
+                                expected_parsed_result = json.loads(expected_parsed.read())
+                        except FileNotFoundError:
+                            continue
                         with open(
                             f"{MOCK_DIR}/{platform}/{command_getter_file}", "r", encoding="utf-8"
                         ) as command_info:

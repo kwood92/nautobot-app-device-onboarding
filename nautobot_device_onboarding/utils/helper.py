@@ -1,8 +1,12 @@
 """General helper functions for the app."""
 
+import os
+import re
 import socket
 
 import netaddr
+from django.contrib.contenttypes.models import ContentType
+from django.db import connections
 from nautobot.dcim.filters import DeviceFilterSet
 from nautobot.dcim.models import Device
 from netaddr.core import AddrFormatError
@@ -16,6 +20,18 @@ FIELDS_PK = {
 }
 
 FIELDS_NAME = {"tags"}
+MARKDOWN_ESCAPE_RE = re.compile(r"(?<!\\)([\*_\[\]\(\)`])")
+
+
+def format_log_message(message):
+    """Format a message for inclusion in Nautobot job logs."""
+    return (
+        MARKDOWN_ESCAPE_RE.sub(r"\\\1", message)
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\r\n", "<br>")
+        .replace("\n", "<br>")
+    )
 
 
 def get_job_filter(data=None):
@@ -85,3 +101,60 @@ def onboarding_task_fqdn_to_ip(address):
         except socket.gaierror as err:
             # DNS Lookup has failed, Raise an exception for unable to complete DNS lookup
             raise OnboardException(f"fail-dns - ERROR failed to complete DNS lookup: {address}") from err
+
+
+def check_for_required_file(directory, filename):
+    """
+    Checks if a file named 'filename' exists within the specified directory.
+
+    Args:
+        directory: The path to the directory to check.
+        filename: The name of the file to check for.
+
+    Returns:
+        True if the 'index' file exists in the directory, False otherwise.
+    """
+    try:
+        for f_name in os.listdir(directory):
+            if f_name == filename:
+                return True
+        return False
+    except FileNotFoundError:
+        return False
+
+
+def close_threaded_db_connections(func):
+    """Decorator to close database connections in threaded tasks."""
+
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        finally:
+            connections.close_all()
+
+    return inner
+
+
+def add_content_type(job, model_to_add, target_object):
+    """Add a content type to the valid content types of a target object.
+
+    Args:
+        job: The job object used for logging.
+        model_to_add: The model class to get the content type for.
+        target_object: The object to which the content type will be added.
+
+    Raises:
+        OnboardException: If adding the content type fails.
+    """
+    try:
+        job.logger.info(
+            "Adding %s content type to valid content types for location type %s",
+            model_to_add.__name__,
+            target_object,
+        )
+        content_type = ContentType.objects.get_for_model(model_to_add)
+        target_object.content_types.add(content_type)
+    except Exception as e:
+        err_msg = f"Failed to add {model_to_add.__name__} to valid content types for {target_object}: {e}"
+        job.logger.error(err_msg)
+        raise OnboardException("fail-general - " + err_msg) from e

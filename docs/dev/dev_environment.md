@@ -13,14 +13,28 @@ This is a quick reference guide if you're already familiar with the development 
 
 The [Invoke](http://www.pyinvoke.org/) library is used to provide some helper commands based on the environment. There are a few configuration parameters which can be passed to Invoke to override the default configuration:
 
-- `nautobot_ver`: the version of Nautobot to use as a base for any built docker containers (default: 2.0.3)
+- `nautobot_ver`: the version of Nautobot to use as a base for any built docker containers (default: 3.0.0)
 - `project_name`: the default docker compose project name (default: `nautobot-device-onboarding`)
-- `python_ver`: the version of Python to use as a base for any built docker containers (default: 3.11)
+- `python_ver`: the version of Python to use as a base for any built docker containers (default: 3.12)
 - `local`: a boolean flag indicating if invoke tasks should be run on the host or inside the docker containers (default: False, commands will be run in docker containers)
 - `compose_dir`: the full path to a directory containing the project compose files
 - `compose_files`: a list of compose files applied in order (see [Multiple Compose files](https://docs.docker.com/compose/extends/#multiple-compose-files) for more information)
 
 Using **Invoke** these configuration options can be overridden using [several methods](https://docs.pyinvoke.org/en/stable/concepts/configuration.html). Perhaps the simplest is setting an environment variable `INVOKE_NAUTOBOT_DEVICE_ONBOARDING_VARIABLE_NAME` where `VARIABLE_NAME` is the variable you are trying to override. The only exception is `compose_files`, because it is a list it must be overridden in a YAML file. There is an example `invoke.yml` (`invoke.example.yml`) in this directory which can be used as a starting point.
+
+#### FakeNOS Support
+
+To enable FakeNOS support in the development environment, you can add the `docker-compose.fakenos.yml` file to the list of compose files used by Invoke. This can be done by creating an `invoke.yml` file with the following contents at the root of the repo:
+
+```yaml
+---
+nautobot_device_onboarding:
+    compose_files:
+      - docker-compose.redis.yml
+      - docker-compose.postgres.yml
+      - docker-compose.fakenos.yml
+      - docker-compose.dev.yml
+```
 
 ### Docker Development Environment
 
@@ -36,9 +50,9 @@ This project is managed by [Python Poetry](https://python-poetry.org/) and has a
 Once you have Poetry, Docker, and Docker-compose installed you can run the following commands (in the root of the repository) to install all other development dependencies in an isolated Python virtual environment:
 
 ```shell
+poetry self add poetry-plugin-shell
 poetry shell
 poetry install
-cp development/creds.example.env development/creds.env
 invoke build
 invoke start
 ```
@@ -63,6 +77,7 @@ nautobot_device_onboarding:
 Run the following commands:
 
 ```shell
+poetry self add poetry-plugin-shell
 poetry shell
 poetry install --extras nautobot
 export $(cat development/development.env | xargs)
@@ -87,8 +102,6 @@ It is typically recommended to launch the Nautobot **runserver** command in a se
 ### Updating the Documentation
 
 Documentation dependencies are pinned to exact versions to ensure consistent results. For the development environment, they are defined in the `pyproject.toml` file.
-
-If you need to update any of the documentation dependencies to a newer version, make sure you copy the exact same versions pinned in `pyproject.toml` to the `docs/requirements.txt` file as well. The latter is used in the automated build pipeline on ReadTheDocs to build the live version of the documentation.
 
 ### CLI Helper Commands
 
@@ -125,8 +138,11 @@ Each command can be executed with `invoke <command>`. All commands support the a
 ```
   ruff             Run ruff to perform code formatting and/or linting.
   pylint           Run pylint code analysis.
+  markdownlint     Run pymarkdown linting.
   tests            Run all tests for this app.
   unittest         Run Django unit tests for the app.
+  djlint           Run djlint to perform django template linting.
+  djhtml           Run djhtml to perform django template formatting.
 ```
 
 ## Project Overview
@@ -153,13 +169,15 @@ The `poetry shell` command is used to create and enable a virtual environment ma
 
 For more details about Poetry and its commands please check out its [online documentation](https://python-poetry.org/docs/).
 
+In Poetry version 2, the shell command was moved out of the main Poetry project and into a plugin. For more details about the Poetry shell plugin, refer to its [GitHub repository](https://github.com/python-poetry/poetry-plugin-shell).
+
 ## Full Docker Development Environment
 
 This project is set up with a number of **Invoke** tasks consumed as simple CLI commands to get developing fast. You'll use a few `invoke` commands to get your environment up and running.
 
 ### Copy the credentials file for Nautobot
 
-First, you need to create the `development/creds.env` file - it stores a bunch of private information such as passwords and tokens for your local Nautobot install. You can make a copy of the `development/creds.example.env` and modify it to suit you.
+First, you may create/overwrite the `development/creds.env` file - it stores a bunch of private information such as passwords and tokens for your local Nautobot install. You can make a copy of the `development/creds.example.env` and modify it to suit you.
 
 ```shell
 cp development/creds.example.env development/creds.env
@@ -177,7 +195,7 @@ The first thing you need to do is build the necessary Docker image for Nautobot 
 #14 exporting layers
 #14 exporting layers 1.2s done
 #14 writing image sha256:2d524bc1665327faa0d34001b0a9d2ccf450612bf8feeb969312e96a2d3e3503 done
-#14 naming to docker.io/nautobot-device-onboarding/nautobot:2.0.3-py3.11 done
+#14 naming to docker.io/nautobot-device-onboarding/nautobot:3.0.0-py3.12 done
 ```
 
 ### Invoke - Starting the Development Environment
@@ -208,9 +226,9 @@ This will start all of the Docker containers used for hosting Nautobot. You shou
 ```bash
 ➜ docker ps
 ****CONTAINER ID   IMAGE                            COMMAND                  CREATED          STATUS          PORTS                                       NAMES
-ee90fbfabd77   nautobot-device-onboarding/nautobot:2.0.3-py3.11  "nautobot-server rqw…"   16 seconds ago   Up 13 seconds                                               nautobot_device_onboarding_worker_1
-b8adb781d013   nautobot-device-onboarding/nautobot:2.0.3-py3.11  "/docker-entrypoint.…"   20 seconds ago   Up 15 seconds   0.0.0.0:8080->8080/tcp, :::8080->8080/tcp   nautobot_device_onboarding_nautobot_1
-d64ebd60675d   nautobot-device-onboarding/nautobot:2.0.3-py3.11  "mkdocs serve -v -a …"   25 seconds ago   Up 18 seconds   0.0.0.0:8001->8080/tcp, :::8001->8080/tcp   nautobot_device_onboarding_docs_1
+ee90fbfabd77   nautobot-device-onboarding/nautobot:3.0.0-py3.12  "nautobot-server rqw…"   16 seconds ago   Up 13 seconds                                               nautobot_device_onboarding_worker_1
+b8adb781d013   nautobot-device-onboarding/nautobot:3.0.0-py3.12  "/docker-entrypoint.…"   20 seconds ago   Up 15 seconds   0.0.0.0:8080->8080/tcp, :::8080->8080/tcp   nautobot_device_onboarding_nautobot_1
+d64ebd60675d   nautobot-device-onboarding/nautobot:3.0.0-py3.12  "mkdocs serve -v -a …"   25 seconds ago   Up 18 seconds   0.0.0.0:8001->8080/tcp, :::8001->8080/tcp   nautobot_device_onboarding_docs_1
 e72d63129b36   postgres:13-alpine               "docker-entrypoint.s…"   25 seconds ago   Up 19 seconds   0.0.0.0:5432->5432/tcp, :::5432->5432/tcp   nautobot_device_onboarding_postgres_1
 96c6ff66997c   redis:6-alpine                   "docker-entrypoint.s…"   25 seconds ago   Up 21 seconds   0.0.0.0:6379->6379/tcp, :::6379->6379/tcp   nautobot_device_onboarding_redis_1
 ```
@@ -221,7 +239,7 @@ Once the containers are fully up, you should be able to open up a web browser, a
 - A live version of the documentation at [http://localhost:8001](http://localhost:8001)
 
 !!! note
-	Sometimes the containers take a minute to fully spin up. If the page doesn't load right away, wait a minute and try again.
+    Sometimes the containers take a minute to fully spin up. If the page doesn't load right away, wait a minute and try again.
 
 ### Invoke - Creating a Superuser
 
@@ -232,7 +250,7 @@ The Nautobot development image will automatically provision a super user when sp
 - `NAUTOBOT_SUPERUSER_PASSWORD=admin`
 
 !!! note
-	The default username is **admin**, but can be overridden by specifying **NAUTOBOT_SUPERUSER_USERNAME**.
+    The default username is **admin**, but can be overridden by specifying **NAUTOBOT_SUPERUSER_USERNAME**.
 
 If you need to create additional superusers, run the follow commands.
 
@@ -282,7 +300,7 @@ Removing network nautobot_device_onboarding_default
 This will safely shut down all of your running Docker containers for this project. When you are ready to spin containers back up, it is as simple as running `invoke start` again [as seen previously](#invoke-starting-the-development-environment).
 
 !!! warning
-	If you're wanting to reset the database and configuration settings, you can use the `invoke destroy` command, but **you will lose any data stored in those containers**, so make sure that is what you want to do.
+    If you're wanting to reset the database and configuration settings, you can use the `invoke destroy` command, but **you will lose any data stored in those containers**, so make sure that is what you want to do.
 
 ### Real-Time Updates? How Cool!
 
@@ -293,15 +311,15 @@ Now you can start developing your app in the project folder!
 The magic here is the root directory is mounted inside your Docker containers when built and ran, so **any** changes made to the files in here are directly updated to the Nautobot app code running in Docker. This means that as you modify the code in your app folder, the changes will be instantly updated in Nautobot.
 
 !!! warning
-	There are a few exceptions to this, as outlined in the section [To Rebuild or Not To Rebuild](#to-rebuild-or-not-to-rebuild).
+    There are a few exceptions to this, as outlined in the section [To Rebuild or Not To Rebuild](#to-rebuild-or-not-to-rebuild).
 
 The back-end Django process is setup to automatically reload itself (it only takes a couple of seconds) every time a file is updated (saved). So for example, if you were to update one of the files like `tables.py`, then save it, the changes will be visible right away in the web browser!
 
 !!! note
-	You may get connection refused while Django reloads, but it should be refreshed fairly quickly.
+    You may get connection refused while Django reloads, but it should be refreshed fairly quickly.
 
 !!! note
-	Workers do not get automatically restarted and must be restarted manually, if running with docker-compose you can run `docker restart nautobot_device_onboarding_worker_1`.
+    Workers do not get automatically restarted and must be restarted manually, if running with docker-compose you can run `docker restart nautobot_device_onboarding_worker_1`.
 
 ### Docker Logs
 
@@ -312,7 +330,7 @@ When trying to debug an issue, one helpful thing you can look at are the logs wi
 ```
 
 !!! note
-	The `-f` tag will keep the logs open, and output them in realtime as they are generated.
+    The `-f` tag will keep the logs open, and output them in realtime as they are generated.
 
 !!! info
     Want to limit the log output even further? Use the `--tail <#>` command line argument in conjunction with `-f`.
@@ -346,7 +364,6 @@ Once completed, the new/updated environment variables should now be live.
 If you want your app to leverage another available Nautobot app or another Python package, you can easily add them into your Docker environment.
 
 ```bash
-➜ poetry shell
 ➜ poetry add <package_name>
 ```
 
@@ -363,7 +380,6 @@ Once the dependencies are resolved, stop the existing containers, rebuild the Do
 Let's say for example you want the new app you're creating to integrate into Slack. To do this, you will want to integrate into the existing Nautobot ChatOps App.
 
 ```bash
-➜ poetry shell
 ➜ poetry add nautobot-chatops
 ```
 
@@ -392,8 +408,8 @@ namespace.configure(
     {
         "nautobot_device_onboarding": {
             ...
-            "python_ver": "3.11",
-	    ...
+            "python_ver": "3.12",
+        ...
         }
     }
 )
@@ -411,7 +427,7 @@ namespace.configure(
     {
         "nautobot_device_onboarding": {
             ...
-            "nautobot_ver": "2.0.3",
+            "nautobot_ver": "3.0.0",
 	    ...
         }
     }

@@ -1,9 +1,10 @@
 """Test Cisco Support adapter."""
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from diffsync.exceptions import ObjectNotFound
-from nautobot.core.testing import TransactionTestCase
+from nautobot.apps.testing import TransactionTestCase
 from nautobot.dcim.models import Device, DeviceType, Manufacturer, Platform
 from nautobot.extras.models import JobResult
 
@@ -12,11 +13,12 @@ from nautobot_device_onboarding.diffsync.adapters.sync_devices_adapters import (
     SyncDevicesNetworkAdapter,
 )
 from nautobot_device_onboarding.jobs import SSOTSyncDevices
+from nautobot_device_onboarding.nornir_plays.command_getter import sync_devices_command_getter
 from nautobot_device_onboarding.tests import utils
 from nautobot_device_onboarding.tests.fixtures import sync_devices_fixture
 
 
-class SyncDevicesNetworkAdapaterTestCase(TransactionTestCase):
+class SyncDevicesNetworkAdapterTestCase(TransactionTestCase):
     """Test SyncDevicesNetworkAdapter class."""
 
     databases = ("default", "job_logs")
@@ -41,18 +43,25 @@ class SyncDevicesNetworkAdapaterTestCase(TransactionTestCase):
         device_data.return_value = sync_devices_fixture.sync_devices_mock_data_valid
 
         self.job.debug = True
-        self.job.ip_addresses = ""
-        self.job.location = self.testing_objects["location"]
-        self.job.namespace = self.testing_objects["namespace"]
-        self.job.port = 22
-        self.job.timeout = 30
-        self.job.update_devices_without_primary_ip = True
-        self.job.device_role = self.testing_objects["device_role"]
-        self.job.device_status = self.testing_objects["status"]
-        self.job.interface_status = self.testing_objects["status"]
-        self.job.ip_address_status = self.testing_objects["status"]
-        self.job.secrets_group = self.testing_objects["secrets_group"]
-        self.job.platform = None
+
+        processed_ip_address_attrs = {
+            "location": self.testing_objects["location"],
+            "namespace": self.testing_objects["namespace"],
+            "port": 22,
+            "timeout": 30,
+            "update_devices_without_primary_ip": True,
+            "device_role": self.testing_objects["device_role"],
+            "device_status": self.testing_objects["status"],
+            "device_tenant": self.testing_objects["device_tenant_1"],
+            "interface_status": self.testing_objects["status"],
+            "ip_address_status": self.testing_objects["status"],
+            "secrets_group": self.testing_objects["secrets_group"],
+            "platform": None,
+        }
+        self.job.ip_address_inventory = {
+            "10.1.1.10": processed_ip_address_attrs,
+            "10.1.1.11": processed_ip_address_attrs,
+        }
 
         self.sync_devices_adapter.load()
 
@@ -73,6 +82,93 @@ class SyncDevicesNetworkAdapaterTestCase(TransactionTestCase):
             self.assertEqual([data["mgmt_interface"]], diffsync_device.interfaces)
             self.assertEqual(data["mask_length"], diffsync_device.mask_length)
             self.assertEqual(data["serial"], diffsync_device.serial)
+
+    @patch("nautobot_device_onboarding.nornir_plays.command_getter.InitNornir")
+    def test_command_getter_raises_when_fail_job_on_task_failure_true(self, init_nornir):
+        self.job.fail_job_on_task_failure = True
+
+        nornir_obj = MagicMock()
+        nr_with_processors = MagicMock()
+        nornir_obj.with_processors.return_value = nr_with_processors
+
+        nr_with_processors.run.return_value = SimpleNamespace(
+            failed=True,
+            failed_hosts={"1.1.1.1": "DEVICE01"},
+        )
+
+        init_nornir.return_value.__enter__.return_value = nornir_obj
+
+        with self.assertRaises(RuntimeError):
+            sync_devices_command_getter(job=self.job, log_level="INFO")
+
+    @patch("nautobot_device_onboarding.nornir_plays.command_getter.InitNornir")
+    def test_command_getter_does_not_raise_when_fail_job_on_task_failure_false(self, init_nornir):
+        self.job.fail_job_on_task_failure = False
+
+        nornir_obj = MagicMock()
+        nr_with_processors = MagicMock()
+        nornir_obj.with_processors.return_value = nr_with_processors
+
+        nr_with_processors.run.return_value = SimpleNamespace(
+            failed=True,
+            failed_hosts={"1.1.1.1": "DEVICE01"},
+        )
+
+        init_nornir.return_value.__enter__.return_value = nornir_obj
+
+        result = sync_devices_command_getter(job=self.job, log_level="INFO")
+        self.assertEqual(result, {})
+
+    @patch("nautobot_device_onboarding.diffsync.adapters.sync_devices_adapters.sync_devices_command_getter")
+    def test_load_respects_form_supplied_platform_manufacturer(self, device_data):
+        """When the job form supplies a Platform, its Manufacturer.name wins over the processor-derived value."""
+        palo_mfr, _ = Manufacturer.objects.get_or_create(name="Palo Alto")
+        palo_platform, _ = Platform.objects.get_or_create(
+            name="Palo Alto PanOS",
+            defaults={"manufacturer": palo_mfr, "network_driver": "paloalto_panos"},
+        )
+        device_data.return_value = {
+            "10.1.1.50": {
+                "hostname": "palo-fw-1",
+                "serial": "SN-PALO-001",
+                "device_type": "PA-220",
+                "mgmt_interface": "management",
+                "manufacturer": "Paloalto",
+                "platform": "paloalto_panos",
+                "network_driver": "paloalto_panos",
+                "mask_length": 24,
+            },
+        }
+
+        self.job.debug = True
+        processed_ip_address_attrs = {
+            "location": self.testing_objects["location"],
+            "namespace": self.testing_objects["namespace"],
+            "port": 22,
+            "timeout": 30,
+            "update_devices_without_primary_ip": True,
+            "device_role": self.testing_objects["device_role"],
+            "device_status": self.testing_objects["status"],
+            "device_tenant": self.testing_objects["device_tenant_1"],
+            "interface_status": self.testing_objects["status"],
+            "ip_address_status": self.testing_objects["status"],
+            "secrets_group": self.testing_objects["secrets_group"],
+            "set_mgmt_only": False,
+            "platform": palo_platform,
+        }
+        self.job.ip_address_inventory = {"10.1.1.50": processed_ip_address_attrs}
+
+        self.sync_devices_adapter.load()
+
+        self.assertTrue(self.sync_devices_adapter.get("manufacturer", "Palo Alto"))
+        with self.assertRaises(ObjectNotFound):
+            self.sync_devices_adapter.get("manufacturer", "Paloalto")
+
+        diff_platform = self.sync_devices_adapter.get("platform", "Palo Alto PanOS")
+        self.assertEqual(diff_platform.manufacturer__name, "Palo Alto")
+
+        diff_device_type = self.sync_devices_adapter.get("device_type", "PA-220__Palo Alto")
+        self.assertEqual(diff_device_type.manufacturer__name, "Palo Alto")
 
 
 class SyncDevicesNautobotAdapterTestCase(TransactionTestCase):
@@ -96,7 +192,7 @@ class SyncDevicesNautobotAdapterTestCase(TransactionTestCase):
         """Test loading Nautobot data into the diffsync store."""
 
         self.job.debug = True
-        self.job.ip_addresses = ["10.1.1.10", "10.1.1.11", "192.1.1.10"]
+        self.job.ip_address_inventory = {"10.1.1.10": {}, "10.1.1.11": {}, "192.1.1.10": {}}
         self.job.location = self.testing_objects["location"]
         self.job.namespace = self.testing_objects["namespace"]
         self.job.port = 22
@@ -104,6 +200,7 @@ class SyncDevicesNautobotAdapterTestCase(TransactionTestCase):
         self.job.update_devices_without_primary_ip = True
         self.job.device_role = self.testing_objects["device_role"]
         self.job.device_status = self.testing_objects["status"]
+        self.job.device_tenant = self.testing_objects["device_tenant_1"]
         self.job.interface_status = self.testing_objects["status"]
         self.job.ip_address_status = self.testing_objects["status"]
         self.job.secrets_group = self.testing_objects["secrets_group"]
@@ -130,7 +227,7 @@ class SyncDevicesNautobotAdapterTestCase(TransactionTestCase):
             self.assertEqual(device_type.manufacturer.name, diffsync_obj.manufacturer__name)
             self.assertEqual(device_type.part_number, diffsync_obj.part_number)
 
-        for device in Device.objects.filter(primary_ip4__host__in=self.job.ip_addresses):
+        for device in Device.objects.filter(primary_ip4__host__in=list(self.job.ip_address_inventory)):
             unique_id = f"{device.location.name}__{device.name}__{device.serial}"
             diffsync_obj = self.sync_devices_adapter.get("device", unique_id)
             self.assertEqual(device.location.name, diffsync_obj.location__name)

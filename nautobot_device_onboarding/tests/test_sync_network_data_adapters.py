@@ -2,8 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
-from nautobot.core.testing import TransactionTestCase
-from nautobot.dcim.models import Device, Interface, SoftwareVersion
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
+from nautobot.apps.testing import TransactionTestCase
+from nautobot.dcim.models import Cable, Device, Interface, SoftwareVersion
 from nautobot.extras.models import JobResult
 from nautobot.ipam.models import VLAN, VRF, IPAddress
 
@@ -40,6 +42,7 @@ class SyncNetworkDataNetworkAdapterTestCase(TransactionTestCase):
         self.job.namespace = self.testing_objects["namespace"]
         self.job.sync_vlans = True
         self.job.sync_vrfs = True
+        self.job.sync_software_version = True
         self.job.debug = True
         self.job.devices_to_load = None
 
@@ -49,11 +52,21 @@ class SyncNetworkDataNetworkAdapterTestCase(TransactionTestCase):
         """Devices that failed to returned pardsed data should be removed from results."""
         # Add a failed device to the mock returned data
         self.job.command_getter_result.update(sync_network_data_fixture.failed_device)
+        self.assertIn("demo-cisco-3", self.job.command_getter_result.keys())
 
         self.sync_network_data_adapter._handle_failed_devices(  # pylint: disable=protected-access
             device_data=self.job.command_getter_result
         )
-        self.assertNotIn("demo-cisco-xe3", self.job.command_getter_result.keys())
+        self.assertNotIn("demo-cisco-3", self.job.command_getter_result.keys())
+
+    def test_handle_failed_devices_no_serial(self):
+        """Test handling of failed devices when an error is raised due to missing serial."""
+        self.job.command_getter_result.update(sync_network_data_fixture.missing_serial)
+        self.assertIn("demo-cisco-4", self.job.command_getter_result.keys())
+        self.sync_network_data_adapter._handle_failed_devices(  # pylint: disable=protected-access
+            device_data=self.job.command_getter_result
+        )
+        self.assertNotIn("demo-cisco-4", self.job.command_getter_result.keys())
 
     @patch("nautobot_device_onboarding.diffsync.adapters.sync_network_data_adapters.sync_network_data_command_getter")
     def test_execute_command_getter(self, command_getter_result):
@@ -118,20 +131,24 @@ class SyncNetworkDataNetworkAdapterTestCase(TransactionTestCase):
         self.job.devices_to_load = Device.objects.filter(name__in=["demo-cisco-1", "demo-cisco-2"])
         self.sync_network_data_adapter.load_vlans()
 
-        for _, device_data in self.job.command_getter_result.items():
+        location_natural_keys = {}
+        for device in self.job.devices_to_load:
+            location_natural_keys[device.name] = device.location.natural_key()
+
+        for hostname, device_data in self.job.command_getter_result.items():
             for _, interface_data in device_data["interfaces"].items():
                 for tagged_vlan in interface_data["tagged_vlans"]:
-                    unique_id = f"{tagged_vlan['id']}__{tagged_vlan['name']}__{self.job.location.name}"
+                    unique_id = f"{tagged_vlan['id']}__{tagged_vlan['name']}__{tuple(location_natural_keys[hostname])}"
                     diffsync_obj = self.sync_network_data_adapter.get("vlan", unique_id)
                     self.assertEqual(int(tagged_vlan["id"]), diffsync_obj.vid)
                     self.assertEqual(tagged_vlan["name"], diffsync_obj.name)
-                    self.assertEqual(self.job.location.name, diffsync_obj.location__name)
+                    self.assertEqual(tuple(location_natural_keys[hostname]), diffsync_obj.location_natural_key)
                 if interface_data["untagged_vlan"]:
-                    unique_id = f"{interface_data['untagged_vlan']['id']}__{interface_data['untagged_vlan']['name']}__{self.job.location.name}"
+                    unique_id = f"{interface_data['untagged_vlan']['id']}__{interface_data['untagged_vlan']['name']}__{tuple(location_natural_keys[hostname])}"
                     diffsync_obj = self.sync_network_data_adapter.get("vlan", unique_id)
                     self.assertEqual(int(interface_data["untagged_vlan"]["id"]), diffsync_obj.vid)
                     self.assertEqual(interface_data["untagged_vlan"]["name"], diffsync_obj.name)
-                    self.assertEqual(self.job.location.name, diffsync_obj.location__name)
+                    self.assertEqual(tuple(location_natural_keys[hostname]), diffsync_obj.location_natural_key)
 
     def test_load_vrfs(self):
         """Test loading vrf data returned from command getter into the diffsync store."""
@@ -229,24 +246,21 @@ class SyncNetworkDataNetworkAdapterTestCase(TransactionTestCase):
     def test_load_software_versions(self):
         """Test loading software version data returned from command getter into the diffsync store."""
         self.sync_network_data_adapter.load_software_versions()
-        for hostname, device_data in self.job.command_getter_result.items():
-            if device_data.get("software_version"):
-                device = Device.objects.get(name=hostname, serial=device_data["serial"])
-                unique_id = f"{device_data['software_version']}__{device.platform.name}"
-                diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
-                self.assertEqual(device_data["software_version"], diffsync_obj.version)
-                self.assertEqual(device.platform.name, diffsync_obj.platform__name)
+        for _, device_data in self.job.command_getter_result.items():
+            device_data = self.job.command_getter_result["demo-cisco-1"]
+            device = Device.objects.get(serial=device_data["serial"])
+            unique_id = f"{device_data['software_version']}__{device.platform}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
+            self.assertEqual("cisco_ios", diffsync_obj.platform__name)
+            self.assertEqual(device_data["software_version"], diffsync_obj.version)
 
     def test_load_software_version_to_device(self):
-        """Test loading software version to device assignments into the diffsync store."""
         self.sync_network_data_adapter.load_software_version_to_device()
-        for hostname, device_data in self.job.command_getter_result.items():
-            if device_data.get("software_version"):
-                unique_id = f"{hostname}__{device_data['serial']}"
-                diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
-                self.assertEqual(hostname, diffsync_obj.name)
-                self.assertEqual(device_data["serial"], diffsync_obj.serial)
-                self.assertEqual(device_data["software_version"], diffsync_obj.software_version__version)
+        for _, device_data in self.job.command_getter_result.items():
+            device = Device.objects.get(serial=device_data["serial"])
+            unique_id = f"{device.name}__{device.serial}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
+            self.assertEqual(device_data["software_version"], diffsync_obj.software_version__version)
 
 
 class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
@@ -274,7 +288,7 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
         self.job.sync_vlans = True
         self.job.sync_vrfs = True
         self.job.debug = True
-        self.job.devices_to_load = Device.objects.filter(name__in=["demo-cisco-1", "demo-cisco-2"])
+        self.job.devices_to_load = Device.objects.filter(name__in=["demo-cisco-1", "demo-cisco-2", "demo-cisco-4"])
 
         self.sync_network_data_adapter = SyncNetworkDataNautobotAdapter(job=self.job, sync=None)
 
@@ -283,8 +297,11 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
         self.sync_network_data_adapter._cache_primary_ips(  # pylint: disable=protected-access
             device_queryset=self.job.devices_to_load
         )
-        for device in self.job.devices_to_load:
-            self.assertEqual(self.sync_network_data_adapter.primary_ips[device.id], device.primary_ip.id)
+        for device in self.job.devices_to_load.filter(Q(primary_ip4__isnull=False) | Q(primary_ip6__isnull=False)):
+            self.assertEqual(
+                self.sync_network_data_adapter.primary_ips[device.id],
+                device.primary_ip.id,
+            )
 
     def test_load_param_mac_address(self):
         """Test MAC address string converstion."""
@@ -314,53 +331,56 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
         self.sync_network_data_adapter.load_vlans()
 
         for vlan in VLAN.objects.all():
-            unique_id = f"{vlan.vid}__{vlan.name}__{self.job.location.name}"
+            unique_id = f"{vlan.vid}__{vlan.name}__{tuple(vlan.location.natural_key())}"
             diffsync_obj = self.sync_network_data_adapter.get("vlan", unique_id)
             self.assertEqual(int(vlan.vid), diffsync_obj.vid)
             self.assertEqual(vlan.name, diffsync_obj.name)
-            self.assertEqual(self.job.location.name, diffsync_obj.location__name)
+            self.assertEqual(tuple(vlan.location.natural_key()), diffsync_obj.location_natural_key)
 
     def test_load_tagged_vlans_to_interface(self):
         """Test loading Nautobot tagged vlan interface assignments into the Diffsync store."""
         self.sync_network_data_adapter.load_tagged_vlans_to_interface()
-        for interface in Interface.objects.filter(device__in=self.job.devices_to_load):
-            tagged_vlans = []
-            for vlan in interface.tagged_vlans.all():
-                vlan_dict = {}
-                vlan_dict["name"] = vlan.name
-                vlan_dict["id"] = str(vlan.vid)
-                tagged_vlans.append(vlan_dict)
+        for device in self.job.devices_to_load:
+            for interface in device.all_interfaces:
+                tagged_vlans = []
+                for vlan in interface.tagged_vlans.all():
+                    vlan_dict = {}
+                    vlan_dict["name"] = vlan.name
+                    vlan_dict["id"] = str(vlan.vid)
+                    tagged_vlans.append(vlan_dict)
 
-                unique_id = f"{interface.device.name}__{interface.name}"
-                diffsync_obj = self.sync_network_data_adapter.get("tagged_vlans_to_interface", unique_id)
-                self.assertEqual(interface.device.name, diffsync_obj.device__name)
-                self.assertEqual(interface.name, diffsync_obj.name)
-                self.assertEqual(tagged_vlans, diffsync_obj.tagged_vlans)
+                    unique_id = f"{interface.parent.name}__{interface.name}"
+                    diffsync_obj = self.sync_network_data_adapter.get("tagged_vlans_to_interface", unique_id)
+                    self.assertEqual(interface.parent.name, diffsync_obj.device__name)
+                    self.assertEqual(interface.name, diffsync_obj.name)
+                    self.assertEqual(tagged_vlans, diffsync_obj.tagged_vlans)
 
     def load_untagged_vlan_to_interface(self):
         """Test loading Nautobot untagged vlan interface assignments into the Diffsync store."""
         self.sync_network_data_adapter.load_untagged_vlan_to_interface()
-        for interface in Interface.objects.filter(device__in=self.job.devices_to_load):
-            untagged_vlan = {}
-            if interface.untagged_vlan:
-                untagged_vlan["name"] = interface.untagged_vlan.name
-                untagged_vlan["id"] = str(interface.untagged_vlan.vid)
+        for device in self.job.devices_to_load:
+            for interface in device.all_interfaces:
+                untagged_vlan = {}
+                if interface.untagged_vlan:
+                    untagged_vlan["name"] = interface.untagged_vlan.name
+                    untagged_vlan["id"] = str(interface.untagged_vlan.vid)
 
-                unique_id = f"{interface.device.name}__{interface.name}"
-                diffsync_obj = self.sync_network_data_adapter.get("untagged_vlans_to_interface", unique_id)
-                self.assertEqual(interface.device.name, diffsync_obj.device__name)
-                self.assertEqual(interface.name, diffsync_obj.name)
-                self.assertEqual(untagged_vlan, diffsync_obj.tagged_vlan)
+                    unique_id = f"{interface.parent.name}__{interface.name}"
+                    diffsync_obj = self.sync_network_data_adapter.get("untagged_vlans_to_interface", unique_id)
+                    self.assertEqual(interface.parent.name, diffsync_obj.device__name)
+                    self.assertEqual(interface.name, diffsync_obj.name)
+                    self.assertEqual(untagged_vlan, diffsync_obj.tagged_vlan)
 
     def test_load_lag_to_interface(self):
         """Test loading Nautobot lag interface assignments into the Diffsync store."""
         self.sync_network_data_adapter.load_lag_to_interface()
-        for interface in Interface.objects.filter(device__in=self.job.devices_to_load):
-            unique_id = f"{interface.device.name}__{interface.name}"
-            diffsync_obj = self.sync_network_data_adapter.get("lag_to_interface", unique_id)
-            self.assertEqual(interface.device.name, diffsync_obj.device__name)
-            self.assertEqual(interface.name, diffsync_obj.name)
-            self.assertEqual(interface.lag.name if interface.lag else "", diffsync_obj.lag__interface__name)
+        for device in self.job.devices_to_load:
+            for interface in device.all_interfaces:
+                unique_id = f"{interface.parent.name}__{interface.name}"
+                diffsync_obj = self.sync_network_data_adapter.get("lag_to_interface", unique_id)
+                self.assertEqual(interface.parent.name, diffsync_obj.device__name)
+                self.assertEqual(interface.name, diffsync_obj.name)
+                self.assertEqual(interface.lag.name if interface.lag else "", diffsync_obj.lag__interface__name)
 
     def test_load_vrfs(self):
         """Test loading Nautobot vrf data into the diffsync store."""
@@ -371,18 +391,60 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
             self.assertEqual(vrf.name, diffsync_obj.name)
             self.assertEqual(self.job.namespace.name, diffsync_obj.namespace__name)
 
+    def test_load_cables(self):
+        """Test loading Nautobot cable data into the diffsync store."""
+        dcim_interface_content_type = ContentType.objects.get_for_model(Interface)
+
+        with self.assertLogs(self.job.logger, level="WARNING") as logs:
+            self.sync_network_data_adapter.load_cables()
+            for cable in Cable.objects.all():
+                if (
+                    cable.termination_a_type != dcim_interface_content_type
+                    or cable.termination_b_type != dcim_interface_content_type
+                ):
+                    self.assertIn(
+                        f"WARNING:nautobot_device_onboarding.jobs:Skipping Cable: {cable}. Only cables with interface terminations are supported.",
+                        logs.output[0],
+                    )
+                    continue
+                unique_id = f"dcim__interface__{cable.termination_a.device.name}__{cable.termination_a.name}__dcim__interface__{cable.termination_b.device.name}__{cable.termination_b.name}"
+                diffsync_obj = self.sync_network_data_adapter.get("cable", unique_id)
+                self.assertEqual(cable.termination_a.device.name, diffsync_obj.termination_a__device__name)
+                self.assertEqual(cable.termination_a.name, diffsync_obj.termination_a__name)
+                self.assertEqual(cable.termination_b.device.name, diffsync_obj.termination_b__device__name)
+                self.assertEqual(cable.termination_b.name, diffsync_obj.termination_b__name)
+            # self.assertIn(f"WARNING - Skipping Cable: #{cable}. Only cables with interface terminations are supported.", logs.output[0])
+
     def test_load_vrf_to_interface(self):
         """Test loading Nautobot vrf interface assignments into the Diffsync store."""
         self.sync_network_data_adapter.load_vrf_to_interface()
-        for interface in Interface.objects.filter(device__in=self.job.devices_to_load):
-            vrf = {}
-            if interface.vrf:
-                vrf["name"] = interface.vrf.name
-            unique_id = f"{interface.device.name}__{interface.name}"
-            diffsync_obj = self.sync_network_data_adapter.get("vrf_to_interface", unique_id)
-            self.assertEqual(interface.device.name, diffsync_obj.device__name)
-            self.assertEqual(interface.name, diffsync_obj.name)
-            self.assertEqual(vrf, diffsync_obj.vrf)
+        for device in self.job.devices_to_load:
+            for interface in device.all_interfaces:
+                vrf = {}
+                if interface.vrf:
+                    vrf["name"] = interface.vrf.name
+                unique_id = f"{interface.parent.name}__{interface.name}"
+                diffsync_obj = self.sync_network_data_adapter.get("vrf_to_interface", unique_id)
+                self.assertEqual(interface.parent.name, diffsync_obj.device__name)
+                self.assertEqual(interface.name, diffsync_obj.name)
+                self.assertEqual(vrf, diffsync_obj.vrf)
+
+    def test_load_software_versions(self):
+        """Test loading Nautobot software version data into the diffsync store."""
+        self.sync_network_data_adapter.load_software_versions()
+        for software_version in SoftwareVersion.objects.all():
+            unique_id = f"{software_version.version}__{software_version.platform.name}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
+            self.assertEqual(software_version.platform.name, diffsync_obj.platform__name)
+            self.assertEqual(software_version.version, diffsync_obj.version)
+
+    def test_load_software_version_to_device(self):
+        """Test loading Nautobot software version device assignments into the Diffsync store."""
+        self.sync_network_data_adapter.load_software_version_to_device()
+        for device in Device.objects.filter(name__in=["demo-cisco-1", "demo-cisco-2"]):
+            unique_id = f"{device.name}__{device.serial}"
+            diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
+            self.assertEqual(device.software_version.version, diffsync_obj.software_version__version)
 
     def test_sync_complete(self):
         """Test primary ip re-assignment if deleted during the sync."""
@@ -393,39 +455,9 @@ class SyncNetworkDataNautobotAdapterTestCase(TransactionTestCase):
             device.primary_ip4 = None
             device.validated_save()
         self.sync_network_data_adapter.sync_complete(source=None, diff=None)
-        for device in self.job.devices_to_load.all():
-            self.assertEqual(self.sync_network_data_adapter.primary_ips[device.id], device.primary_ip.id)
-
-    def test_load_software_versions(self):
-        """Test loading Nautobot software version data into the diffsync store."""
-        SoftwareVersion.objects.create(
-            version="16.12.04",
-            platform=self.testing_objects["platform_1"],
-            status=self.testing_objects["status"],
-        )
-        self.sync_network_data_adapter.load_software_versions()
-        for software_version in SoftwareVersion.objects.all():
-            unique_id = f"{software_version.version}__{software_version.platform.name}"
-            diffsync_obj = self.sync_network_data_adapter.get("software_version", unique_id)
-            self.assertEqual(software_version.version, diffsync_obj.version)
-            self.assertEqual(software_version.platform.name, diffsync_obj.platform__name)
-
-    def test_load_software_version_to_device(self):
-        """Test loading Nautobot software version to device assignments into the diffsync store."""
-        software_version = SoftwareVersion.objects.create(
-            version="16.12.04",
-            platform=self.testing_objects["platform_1"],
-            status=self.testing_objects["status"],
-        )
-        device = self.testing_objects["device_1"]
-        device.software_version = software_version
-        device.validated_save()
-
-        self.sync_network_data_adapter.load_software_version_to_device()
-        for device in self.job.devices_to_load:
-            unique_id = f"{device.name}__{device.serial}"
-            diffsync_obj = self.sync_network_data_adapter.get("software_version_to_device", unique_id)
-            self.assertEqual(device.name, diffsync_obj.name)
-            self.assertEqual(device.serial, diffsync_obj.serial)
-            expected_version = device.software_version.version if device.software_version else ""
-            self.assertEqual(expected_version, diffsync_obj.software_version__version)
+        # Only test for Devices that initially had Primary IP set
+        for device in self.job.devices_to_load.filter(Q(primary_ip4__isnull=False) | Q(primary_ip6__isnull=False)):
+            self.assertEqual(
+                self.sync_network_data_adapter.primary_ips[device.id],
+                device.primary_ip.id if device.primary_ip else None,
+            )

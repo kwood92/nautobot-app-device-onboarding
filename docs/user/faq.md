@@ -49,7 +49,7 @@ Optional arguments are often used to define a `secret` for Cisco devices and oth
 
 ## Does this app support the discovery and the creation of all interfaces and IP Addresses?
 
-**Yes**. The original Deivce Onboarding job/SSot Sync Devices will only discover and create the management interface and the management IP address. Importing all interfaces and IP addresses is available from the SSoT job (Sync Network Data).
+**Yes**. The original Device Onboarding job/SSot Sync Devices will only discover and create the management interface and the management IP address. Importing all interfaces and IP addresses is available from the SSoT job (Sync Network Data).
 
 ## Does this app support the discovery of device based on fqdn?
 
@@ -74,3 +74,32 @@ Optional arguments are often used to define a `secret` for Cisco devices and oth
 ## Why don't I see a webhook generated when a new device is onboarded successfully?
 
 It's expected that any changes done asynchronously in Nautobot currently (within a worker) will not generate a webhook.
+
+## Why should I limit as much as possible the initial job?
+
+- No access to "all" data, such as config context.
+- Several assumptions made for Nornir inventory that would be different in all other Nornir inventory jobs.
+- An inventory created for each device.
+    - Causes additional SQL connections which may benefit from the use of `serial` runner.
+
+## How do I pass in extra connection options into Netmiko for the SSoT based jobs?
+
+Device Onboarding 4.0 uses Netmiko as the automation engine that queries the devices for information; more specifically, nornir-netmiko. To extend the device onboarding app to pass `extras` to the connection options the following can be added to `nautobot_plugin_nornir` `PLUGIN_CONFIG`.
+
+```python
+PLUGINS_CONFIG = {
+    "nautobot_device_onboarding": {},
+    "nautobot_plugin_nornir": {
+        "nornir_settings": {
+            "... omitted ..."},
+        "connection_options": {
+            "netmiko": {
+                "extras": {  # <==== passed into the connection setup.
+                    "fast_cli": False,
+                    "read_timeout_override": 30,
+                },
+            },
+        },
+    },
+}
+```

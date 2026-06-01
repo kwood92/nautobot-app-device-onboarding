@@ -2,13 +2,24 @@
 
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import yaml
+from nautobot.apps.testing import TransactionTestCase
+from nautobot.extras.choices import SecretsGroupAccessTypeChoices, SecretsGroupSecretTypeChoices
+from nautobot.extras.models import Secret, SecretsGroup, SecretsGroupAssociation
+from netmiko.exceptions import NetmikoAuthenticationException, NetmikoTimeoutException
+from nornir.core.exceptions import NornirSubTaskError
+from nornir.core.task import Result
 
 from nautobot_device_onboarding.nornir_plays.command_getter import (
     _get_commands_to_run,
     _get_set_send_command_timing,
+    _parse_credentials,
+    netmiko_send_commands,
 )
+from nautobot_device_onboarding.nornir_plays.logger import NornirLogger
 
 MOCK_DIR = os.path.join("nautobot_device_onboarding", "tests", "mock")
 
@@ -27,6 +38,7 @@ class TestGetCommandsToRun(unittest.TestCase):
             sync_vlans=False,
             sync_vrfs=False,
             sync_cables=False,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show version", "jpath": "[*].hostname", "parser": "textfsm"},
@@ -46,6 +58,7 @@ class TestGetCommandsToRun(unittest.TestCase):
             sync_vlans=False,
             sync_vrfs=False,
             sync_cables=False,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show version", "parser": "textfsm", "jpath": "[*].serial[]"},
@@ -79,6 +92,7 @@ class TestGetCommandsToRun(unittest.TestCase):
             sync_vlans=False,
             sync_vrfs=True,
             sync_cables=False,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show version", "parser": "textfsm", "jpath": "[*].serial[]"},
@@ -119,6 +133,7 @@ class TestGetCommandsToRun(unittest.TestCase):
             sync_vlans=True,
             sync_vrfs=False,
             sync_cables=False,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show vlan", "parser": "textfsm", "jpath": "[*].{id: vlan_id, name: vlan_name}"},
@@ -153,6 +168,7 @@ class TestGetCommandsToRun(unittest.TestCase):
             sync_vlans=True,
             sync_vrfs=True,
             sync_cables=False,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show vlan", "parser": "textfsm", "jpath": "[*].{id: vlan_id, name: vlan_name}"},
@@ -189,7 +205,11 @@ class TestGetCommandsToRun(unittest.TestCase):
 
     def test_deduplicate_command_list_sync_data_cables(self):
         get_commands_to_run = _get_commands_to_run(
-            self.expected_data["sync_network_data"], sync_vlans=False, sync_vrfs=False, sync_cables=True
+            self.expected_data["sync_network_data"],
+            sync_vlans=False,
+            sync_vrfs=False,
+            sync_cables=True,
+            sync_software_version=False,
         )
         expected_commands_to_run = [
             {"command": "show version", "parser": "textfsm", "jpath": "[*].serial[]"},
@@ -222,45 +242,221 @@ class TestGetCommandsToRun(unittest.TestCase):
         self.assertEqual(get_commands_to_run, expected_commands_to_run)
 
 
+@patch("nautobot_device_onboarding.nornir_plays.command_getter.NornirLogger", MagicMock())
+class TestSSHCredParsing(TransactionTestCase):
+    """Tests against the _parse_credentials helper function."""
+
+    databases = ("default", "job_logs")
+
+    def setUp(self):  # pylint: disable=invalid-name
+        """Initialize test case."""
+        username_secret, _ = Secret.objects.get_or_create(
+            name="username", provider="environment-variable", parameters={"variable": "DEVICE_USER"}
+        )
+        password_secret, _ = Secret.objects.get_or_create(
+            name="password", provider="environment-variable", parameters={"variable": "DEVICE_PASS"}
+        )
+        self.secrets_group, _ = SecretsGroup.objects.get_or_create(name="test secrets group")
+        SecretsGroupAssociation.objects.get_or_create(
+            secrets_group=self.secrets_group,
+            secret=username_secret,
+            access_type=SecretsGroupAccessTypeChoices.TYPE_GENERIC,
+            secret_type=SecretsGroupSecretTypeChoices.TYPE_USERNAME,
+        )
+        SecretsGroupAssociation.objects.get_or_create(
+            secrets_group=self.secrets_group,
+            secret=password_secret,
+            access_type=SecretsGroupAccessTypeChoices.TYPE_GENERIC,
+            secret_type=SecretsGroupSecretTypeChoices.TYPE_PASSWORD,
+        )
+
+    @patch.dict(os.environ, {"DEVICE_USER": "admin", "DEVICE_PASS": "worstP$$w0rd"})
+    def test_parse_user_and_pass(self):
+        """Extract correct user and password from secretgroup env-vars"""
+        assert _parse_credentials(
+            secrets_group=self.secrets_group, logger=NornirLogger(job_result=MagicMock(), log_level=1)
+        ) == (
+            "admin",
+            "worstP$$w0rd",
+        )
+
+    @patch.dict(os.environ, {"DEVICE_USER": "admin"})
+    def test_parse_user_missing_pass(self):
+        """Extract just the username without bailing out if password is missing"""
+        mock_job_result = MagicMock()
+        assert _parse_credentials(
+            secrets_group=self.secrets_group, logger=NornirLogger(job_result=mock_job_result, log_level=1)
+        ) == ("admin", None)
+        mock_job_result.log.assert_called_with("Missing credentials for ['password']", level_choice="debug")
+
+    @patch(
+        "nautobot_device_onboarding.nornir_plays.command_getter.settings",
+        MagicMock(NAPALM_USERNAME="napalm_admin", NAPALM_PASSWORD="napalamP$$w0rd"),
+    )
+    def test_parse_napalm_creds(self):
+        """When no secrets group is provided, fallback to napalm creds"""
+        assert _parse_credentials(secrets_group=None, logger=NornirLogger(job_result=None, log_level=1)) == (
+            "napalm_admin",
+            "napalamP$$w0rd",
+        )
+
+
+class TestNetmikoSendCommandsEarlyReturns(unittest.TestCase):
+    """Pin the failure messages emitted by `netmiko_send_commands` early-return paths.
+
+    These were silently dropped before `close_threaded_db_connections` was fixed to
+    return the wrapped function's value; without that fix every assertion below sees
+    `None` instead of a `Result`.
+    """
+
+    def test_no_platform_returns_failed_result(self):
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.platform = None
+
+        result = netmiko_send_commands(task, {}, "sync_devices", MagicMock(), MagicMock())
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host has no platform set.")
+
+    def test_unsupported_platform_returns_failed_result(self):
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.platform = "made_up_platform"
+
+        result = netmiko_send_commands(task, {}, "sync_devices", MagicMock(), MagicMock())
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host has a unsupported platform set.")
+
+    def test_missing_yaml_definitions_returns_failed_result(self):
+        # paloalto_panos ships with `sync_devices` but no `sync_network_data` definitions,
+        # so requesting the latter should hit the missing-definitions branch.
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.platform = "paloalto_panos"
+        yaml_data = {"paloalto_panos": {"sync_devices": {"hostname": {"commands": []}}}}
+
+        result = netmiko_send_commands(task, yaml_data, "sync_network_data", MagicMock(), MagicMock())
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host has missing definitions in command_mapper YAML file.")
+
+    @patch("nautobot_device_onboarding.nornir_plays.command_getter.tcp_ping", MagicMock(return_value=False))
+    def test_tcp_ping_failure_returns_failed_result(self):
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.hostname = "198.51.100.1"
+        task.host.port = 22
+        task.host.platform = "cisco_ios"
+        nautobot_job = MagicMock()
+        nautobot_job.connectivity_test = True
+        yaml_data = {"cisco_ios": {"sync_devices": {"command": "show version", "parser": "raw"}}}
+
+        result = netmiko_send_commands(task, yaml_data, "sync_devices", MagicMock(), nautobot_job)
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host failed connectivity check via tcp_ping.")
+
+    @patch(
+        "nautobot_device_onboarding.nornir_plays.command_getter._get_commands_to_run",
+        MagicMock(return_value=[{"command": "show version", "parser": "raw"}]),
+    )
+    def test_netmiko_authentication_exception_returns_failed_result(self):
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.platform = "cisco_ios"
+        task.host.data = {}
+        sub_result = MagicMock()
+        sub_result.exception = NetmikoAuthenticationException()
+        task.results = [sub_result]
+        task.run.side_effect = NornirSubTaskError(task=task, result=MagicMock())
+        nautobot_job = MagicMock()
+        nautobot_job.connectivity_test = False
+        nautobot_job.fail_job_on_task_failure = False
+        yaml_data = {"cisco_ios": {"sync_devices": {"command": "show version", "parser": "raw"}}}
+
+        result = netmiko_send_commands(task, yaml_data, "sync_devices", MagicMock(), nautobot_job)
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host failed authentication.")
+
+    @patch(
+        "nautobot_device_onboarding.nornir_plays.command_getter._get_commands_to_run",
+        MagicMock(return_value=[{"command": "show version", "parser": "raw"}]),
+    )
+    def test_netmiko_timeout_exception_returns_failed_result(self):
+        task = MagicMock()
+        task.host.name = "test-host"
+        task.host.platform = "cisco_ios"
+        task.host.data = {}
+        sub_result = MagicMock()
+        sub_result.exception = NetmikoTimeoutException()
+        task.results = [sub_result]
+        task.run.side_effect = NornirSubTaskError(task=task, result=MagicMock())
+        nautobot_job = MagicMock()
+        nautobot_job.connectivity_test = False
+        nautobot_job.fail_job_on_task_failure = False
+        yaml_data = {"cisco_ios": {"sync_devices": {"command": "show version", "parser": "raw"}}}
+
+        result = netmiko_send_commands(task, yaml_data, "sync_devices", MagicMock(), nautobot_job)
+
+        self.assertIsInstance(result, Result)
+        self.assertTrue(result.failed)
+        self.assertEqual(result.result, "test-host SSH Timeout Occured.")
+
+
 class TestGetSetSendCommandTiming(unittest.TestCase):
     """Test resolution of the netmiko ``use_timing`` flag for a host."""
 
     def test_default_when_no_inputs(self):
-        """With no csv_file and no job kwarg, timing defaults to False."""
-        self.assertFalse(_get_set_send_command_timing({}, "router1"))
+        """A job with no per-host inventory and a falsy flag resolves to False."""
+        job = SimpleNamespace(set_send_command_timing=False, ip_address_inventory={})
+        self.assertFalse(_get_set_send_command_timing(job, "router1"))
 
-    def test_job_kwarg_true(self):
-        """The job-wide kwarg is honored when no csv_file is supplied."""
-        self.assertTrue(_get_set_send_command_timing({"set_send_command_timing": True}, "router1"))
+    def test_job_wide_true(self):
+        """The job-wide flag is honored when no per-host value is set."""
+        job = SimpleNamespace(set_send_command_timing=True, ip_address_inventory={})
+        self.assertTrue(_get_set_send_command_timing(job, "router1"))
 
-    def test_job_kwarg_false(self):
-        """A falsy job-wide kwarg resolves to False."""
-        self.assertFalse(_get_set_send_command_timing({"set_send_command_timing": False}, "router1"))
+    def test_missing_inventory_attr_falls_back_to_job_wide(self):
+        """A job without ip_address_inventory (e.g. sync_network_data) uses the job-wide flag."""
+        job = SimpleNamespace(set_send_command_timing=True)
+        self.assertTrue(_get_set_send_command_timing(job, "router1"))
 
-    def test_csv_value_overrides_job_kwarg(self):
-        """A per-host csv True wins even when the job kwarg is False."""
-        orig_job_kwargs = {
-            "set_send_command_timing": False,
-            "csv_file": {"router1": {"set_send_command_timing": True}},
-        }
-        self.assertTrue(_get_set_send_command_timing(orig_job_kwargs, "router1"))
+    def test_per_host_true_overrides_job_wide_false(self):
+        """A per-host CSV True wins even when the job-wide flag is False."""
+        job = SimpleNamespace(
+            set_send_command_timing=False,
+            ip_address_inventory={"router1": {"set_send_command_timing": True}},
+        )
+        self.assertTrue(_get_set_send_command_timing(job, "router1"))
 
-    def test_csv_false_falls_back_to_job_kwarg(self):
-        """A falsy per-host csv value falls back to the job-wide kwarg.
+    def test_per_host_false_falls_back_to_job_wide(self):
+        """A falsy per-host value falls back to the job-wide flag (csv False does not override)."""
+        job = SimpleNamespace(
+            set_send_command_timing=True,
+            ip_address_inventory={"router1": {"set_send_command_timing": False}},
+        )
+        self.assertTrue(_get_set_send_command_timing(job, "router1"))
 
-        Because the csv value is only used when truthy, a csv False does NOT
-        override a job-wide True.
-        """
-        orig_job_kwargs = {
-            "set_send_command_timing": True,
-            "csv_file": {"router1": {"set_send_command_timing": False}},
-        }
-        self.assertTrue(_get_set_send_command_timing(orig_job_kwargs, "router1"))
+    def test_per_host_false_and_job_wide_false(self):
+        """Both per-host and job-wide falsy resolves to False."""
+        job = SimpleNamespace(
+            set_send_command_timing=False,
+            ip_address_inventory={"router1": {"set_send_command_timing": False}},
+        )
+        self.assertFalse(_get_set_send_command_timing(job, "router1"))
 
-    def test_csv_false_and_job_kwarg_false(self):
-        """Both csv and job kwarg falsy resolves to False."""
-        orig_job_kwargs = {
-            "set_send_command_timing": False,
-            "csv_file": {"router1": {"set_send_command_timing": False}},
-        }
-        self.assertFalse(_get_set_send_command_timing(orig_job_kwargs, "router1"))
+    def test_unknown_host_uses_job_wide(self):
+        """A host not present in the inventory falls back to the job-wide flag."""
+        job = SimpleNamespace(
+            set_send_command_timing=True,
+            ip_address_inventory={"other": {"set_send_command_timing": False}},
+        )
+        self.assertTrue(_get_set_send_command_timing(job, "router1"))

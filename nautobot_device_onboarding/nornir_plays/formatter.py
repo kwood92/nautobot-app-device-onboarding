@@ -4,6 +4,7 @@ import json
 import logging
 from json.decoder import JSONDecodeError
 
+import jinja2
 from django.template import engines
 from django.utils.module_loading import import_string
 from jdiff import extract_data_from_json
@@ -106,7 +107,12 @@ def extract_and_post_process(parsed_command_output, yaml_command_element, j2_dat
         # j2 context data changes obj(hostname) -> extracted_value for post_processor
         j2_data_context["obj"] = extracted_value
         template = j2_env.from_string(yaml_command_element["post_processor"])
-        extracted_processed = template.render(**j2_data_context)
+        try:
+            extracted_processed = template.render(**j2_data_context)
+        except jinja2.exceptions.UndefinedError:
+            raise ValueError(
+                f"Failure Jinja parsing, context: {j2_data_context}. processor: {yaml_command_element['post_processor']}"
+            )
     else:
         extracted_processed = extracted_value
     post_processed_data = normalize_processed_data(extracted_processed, iter_type)
@@ -121,6 +127,7 @@ def perform_data_extraction(host, command_info_dict, command_outputs_dict, job_d
     sync_vlans = host.defaults.data.get("sync_vlans", False)
     sync_vrfs = host.defaults.data.get("sync_vrfs", False)
     sync_cables = host.defaults.data.get("sync_cables", False)
+    sync_software_version = host.defaults.data.get("sync_software_version", False)
     get_context_from_pre_processor = {}
     if command_info_dict.get("pre_processor"):
         for pre_processor_name, field_data in command_info_dict["pre_processor"].items():
@@ -149,6 +156,8 @@ def perform_data_extraction(host, command_info_dict, command_outputs_dict, job_d
             continue
         if not sync_cables and ssot_field == "cables":
             continue
+        if not sync_software_version and ssot_field == "software_version":
+            continue
         if ssot_field == "pre_processor":
             continue
         if isinstance(field_data["commands"], dict):
@@ -175,7 +184,7 @@ def perform_data_extraction(host, command_info_dict, command_outputs_dict, job_d
                 if len(field_nesting) > 1:
                     # Means there is "anticipated" data nesting `interfaces__mtu` means final data would be
                     # {"Ethernet1/1": {"mtu": <value>}}
-                    for current_key in root_key_pre:
+                    for current_key in root_key_post:
                         # current_key is a single iteration from the root_key extracted value. Typically we want this to be
                         # a list of data that we want to become our nested key. E.g. current_key "Ethernet1/1"
                         # These get passed into the render context for the template render to allow nested jpaths to use

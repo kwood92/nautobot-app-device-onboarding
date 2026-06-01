@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/nautobot/nautobot-app-device-onboarding/develop/docs/images/icon-DeviceOnboarding.png" class="logo" height="200px">
   <br>
-  <a href="https://github.com/nautobot/nautobot-app-device-onboarding/actions"><img src="https://github.com/nautobot/nautobot-app-device-onboarding/actions/workflows/ci.yml/badge.svg?branch=develop"></a>
+  <a href="https://github.com/nautobot/nautobot-app-device-onboarding/actions"><img src="https://github.com/nautobot/nautobot-app-device-onboarding/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://docs.nautobot.com/projects/device-onboarding/en/latest/"><img src="https://readthedocs.org/projects/nautobot-plugin-device-onboarding/badge/"></a>
   <a href="https://pypi.org/project/nautobot-device-onboarding/"><img src="https://img.shields.io/pypi/v/nautobot-device-onboarding"></a>
   <a href="https://pypi.org/project/nautobot-device-onboarding/"><img src="https://img.shields.io/pypi/dm/nautobot-device-onboarding"></a>
@@ -19,40 +19,43 @@ Regardless, the Onboarding App greatly simplifies the onboarding process by allo
 
 ### Support Matrix (Sync Devices From Network)
 
-|     Data Attribute      | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  |
-| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: |
-| Hostname                | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Platform                | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Manufacturer            | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Serial Number           | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Device Type             | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Mgmt Interface          | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Mgmt IP Address         | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+
+|     Data Attribute      | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco XR | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  | HP Comware | Palo Alto Panos | Aruba AOSCX | Aruba OS | Brocade/Ruckus Fastiron | HP Procurve |
+| ----------------------  | :-: | :-: |  :-:  |  :-:  |  :-:  |  :-:  | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Hostname                | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Platform                | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Manufacturer            | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Serial Number           | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Device Type             | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Mgmt Interface          | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+| Mgmt IP Address         | ✅ | ✅ | ✅ | 🧪 | ✅ | ✅ | ✅ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
+
 
 ### Support Matrix (Sync Data From Network)
 
-|     Interfaces          | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  |
-| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: |
-| Name           | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| IP Address     | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Type           | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| MTU            | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Description    | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Mac Address    | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Link Status    | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| 802.1Q mode    | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Lag Member     | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Vrf Membership | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+|     Interfaces          | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco XR | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  | Palo Alto Panos | Aruba AOSCX | Aruba OS | Brocade/Ruckus Fastiron | HP Procurve |
+| ----------------------- | :----------------: |  :--------------:  |  :--------------:  | :-: | :--------------:  |  :--------------:  |  :--------------:  | :-: | :-: | :--------------: | :--------------: | :--------------: | :--------------: |
+| Name           | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| IP Address     | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Type           | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| MTU            | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Description    | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Mac Address    | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Link Status    | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| 802.1Q mode    | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Lag Member     | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Vrf Membership | ✅ | ✅ | ✅ | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Software Version | ✅ | ✅ | ✅  | 🧪 | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
 
-|     VLANS          | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  |
-| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: |
-| Untagged VLANs       | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Tagged VLANs        | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+|     VLANS          | Cisco IOS          | Cisco XE           | Cisco XR           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  | Palo Alto Panos | Aruba AOSCX | Aruba OS | Brocade/Ruckus Fastiron | HP Procurve |
+| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: | :-: | :--------------: | :--------------: | :--------------: | :--------------: |
+| Untagged VLANs       | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+| Tagged VLANs        | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
 
-|     Cabling          | Cisco IOS          | Cisco XE           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  |
-| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: |
-|  Terminations A      | 🧪 | 🧪 | 🧪 | ❌ | 🧪 | ❌ | ❌ |
-|  Terminations B      | 🧪 | 🧪 | 🧪 | ❌ | 🧪 | ❌ | ❌ |
+|     Cabling          | Cisco IOS          | Cisco XE           | Cisco XR           | Cisco NXOS         | Cisco WLC          | Juniper Junos      | Arista EOS         | F5  | Palo Alto Panos | Aruba AOSCX | Aruba OS | Brocade/Ruckus Fastiron | HP Procurve |
+| ----------------------- | :----------------: |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  |  :--------------:  | :-: | :-: | :--------------: | :--------------: | :--------------: | :--------------: |
+|  Terminations A      | 🧪 | 🧪 | ❌ | 🧪 | ❌ | 🧪 | ❌ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
+|  Terminations B      | 🧪 | 🧪 | ❌ | 🧪 | ❌ | 🧪 | ❌ | 🧪 | ❌ | 🧪 | 🧪 | 🧪 | 🧪 |
 
 | Legend |
 | :---- |
@@ -64,7 +67,16 @@ Regardless, the Onboarding App greatly simplifies the onboarding process by allo
 
 Device Onboarding is a Job that allows you to provide a few required pieces of information and onboard the device.
 
-![job input](https://raw.githubusercontent.com/nautobot/nautobot-app-device-onboarding/develop/docs/images/sync_devices_inputs.png)
+As Job data and Job execution will be same for both Manual Input and CSV Input.
+
+Manual Input:
+
+![job input](https://raw.githubusercontent.com/nautobot/nautobot-app-device-onboarding/develop/docs/images/manual_input_dark.png)
+
+CSV Input:
+
+![job input](https://raw.githubusercontent.com/nautobot/nautobot-app-device-onboarding/develop/docs/images/csv_input_dark.png)
+
 
 ## Try it out!
 
